@@ -50,11 +50,11 @@
     <div class="result" id="result">
       <div class="compare">
         <figure>
-          <img id="beforeImg" alt="원본 이미지" />
+          <img id="beforeImg" data-lightbox alt="원본 이미지" />
           <figcaption>원본 · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
         </figure>
         <figure>
-          <img id="afterImg" alt="업스케일된 이미지" />
+          <img id="afterImg" data-lightbox alt="업스케일된 이미지" />
           <figcaption>업스케일 후 · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
         </figure>
       </div>
@@ -72,6 +72,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js"></script>
 <script src="theme.js"></script>
+<script src="lightbox.js"></script>
 <script src="upscale.js"></script>
 </body>
 </html>
