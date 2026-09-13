@@ -3,11 +3,15 @@
   var fileInput = document.getElementById("fileInput");
   var controls = document.getElementById("controls");
   var result = document.getElementById("result");
+  var iconSetResult = document.getElementById("iconSetResult");
 
   var modeTabs = document.getElementById("modeTabs");
   var percentField = document.getElementById("percentField");
   var exactField = document.getElementById("exactField");
   var longedgeField = document.getElementById("longedgeField");
+  var storeInfoField = document.getElementById("storeInfoField");
+  var storeInfoText = document.getElementById("storeInfoText");
+  var formatField = document.getElementById("formatField");
 
   var percentRange = document.getElementById("percentRange");
   var percentValue = document.getElementById("percentValue");
@@ -31,10 +35,52 @@
   var saveStat = document.getElementById("saveStat");
   var downloadBtn = document.getElementById("downloadBtn");
 
+  var iconGrid = document.getElementById("iconGrid");
+  var iconSetSummary = document.getElementById("iconSetSummary");
+  var iconZipBtn = document.getElementById("iconZipBtn");
+
   var currentMode = "percent";
   var originalFile = null;
   var originalImage = null;
   var originalMime = "image/png";
+
+  var STORE_MODES = ["google-play", "apple-store"];
+
+  var ICON_SPECS = {
+    "google-play": {
+      info: "스토어 등록용 512×512 아이콘과 런처 아이콘 5종(mdpi~xxxhdpi)을 Android 프로젝트에 바로 넣을 수 있는 mipmap 폴더 구조로 묶어드려요.",
+      background: null,
+      zipName: "google-play-icons.zip",
+      icons: [
+        { name: "play-store-icon-512.png", size: 512 },
+        { name: "mipmap-mdpi/ic_launcher.png", size: 48 },
+        { name: "mipmap-hdpi/ic_launcher.png", size: 72 },
+        { name: "mipmap-xhdpi/ic_launcher.png", size: 96 },
+        { name: "mipmap-xxhdpi/ic_launcher.png", size: 144 },
+        { name: "mipmap-xxxhdpi/ic_launcher.png", size: 192 },
+      ],
+    },
+    "apple-store": {
+      info: "App Store 등록용 1024×1024 아이콘과 iPhone·iPad용 아이콘까지 총 13개 사이즈를 만들어드려요. 투명 배경은 흰색으로 채워져요(애플 정책상 투명 아이콘 불가).",
+      background: "#ffffff",
+      zipName: "app-store-icons.zip",
+      icons: [
+        { name: "icon-1024.png", size: 1024 },
+        { name: "icon-180.png", size: 180 },
+        { name: "icon-167.png", size: 167 },
+        { name: "icon-152.png", size: 152 },
+        { name: "icon-120.png", size: 120 },
+        { name: "icon-87.png", size: 87 },
+        { name: "icon-80.png", size: 80 },
+        { name: "icon-76.png", size: 76 },
+        { name: "icon-60.png", size: 60 },
+        { name: "icon-58.png", size: 58 },
+        { name: "icon-40.png", size: 40 },
+        { name: "icon-29.png", size: 29 },
+        { name: "icon-20.png", size: 20 },
+      ],
+    },
+  };
 
   function formatBytes(bytes) {
     if (bytes < 1024) return bytes + " B";
@@ -91,6 +137,7 @@
 
         controls.style.display = "grid";
         result.classList.remove("visible");
+        iconSetResult.classList.remove("visible");
         formatSelect.value = "auto";
         updateQualityVisibility();
       };
@@ -106,9 +153,27 @@
     modeTabs.querySelectorAll("button").forEach(function (b) {
       b.classList.toggle("active", b === btn);
     });
+
+    var isStoreMode = STORE_MODES.indexOf(currentMode) !== -1;
+
     percentField.style.display = currentMode === "percent" ? "grid" : "none";
     exactField.style.display = currentMode === "exact" ? "grid" : "none";
     longedgeField.style.display = currentMode === "longedge" ? "grid" : "none";
+    formatField.style.display = isStoreMode ? "none" : "grid";
+    qualityField.style.display = isStoreMode ? "none" : qualityField.style.display;
+
+    if (isStoreMode) {
+      storeInfoField.style.display = "block";
+      storeInfoText.textContent = ICON_SPECS[currentMode].info;
+      convertBtn.textContent = "아이콘 세트 만들기";
+    } else {
+      storeInfoField.style.display = "none";
+      convertBtn.textContent = "변환하기";
+      updateQualityVisibility();
+    }
+
+    result.classList.remove("visible");
+    iconSetResult.classList.remove("visible");
   });
 
   percentRange.addEventListener("input", function () {
@@ -159,8 +224,70 @@
     return { w: w, h: h };
   }
 
-  convertBtn.addEventListener("click", function () {
-    if (!originalImage) return;
+  function drawIconCanvas(size, background) {
+    var canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, size, size);
+    }
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(originalImage, 0, 0, size, size);
+    return canvas;
+  }
+
+  function canvasToPngBlob(canvas) {
+    return new Promise(function (resolve) {
+      canvas.toBlob(function (blob) {
+        resolve(blob);
+      }, "image/png");
+    });
+  }
+
+  async function generateIconSet(specKey) {
+    var spec = ICON_SPECS[specKey];
+    convertBtn.disabled = true;
+    convertBtn.textContent = "만드는 중…";
+    iconGrid.innerHTML = "";
+
+    var zip = new JSZip();
+    var totalBytes = 0;
+
+    for (var i = 0; i < spec.icons.length; i++) {
+      var item = spec.icons[i];
+      var canvas = drawIconCanvas(item.size, spec.background);
+      var blob = await canvasToPngBlob(canvas);
+      if (!blob) continue;
+      totalBytes += blob.size;
+      zip.file(item.name, blob);
+
+      var url = URL.createObjectURL(blob);
+      var fig = document.createElement("figure");
+      var displayName = item.name.split("/").pop();
+      fig.innerHTML =
+        '<img src="' + url + '" alt="' + displayName + '" />' +
+        "<figcaption><b>" + item.size + "×" + item.size + "</b>" + displayName + "</figcaption>";
+      iconGrid.appendChild(fig);
+    }
+
+    var zipBlob = await zip.generateAsync({ type: "blob" });
+    var zipUrl = URL.createObjectURL(zipBlob);
+    iconZipBtn.href = zipUrl;
+    iconZipBtn.download = spec.zipName;
+    iconSetSummary.textContent =
+      spec.icons.length + "개 아이콘 파일 생성 완료 · 압축 " + formatBytes(zipBlob.size);
+
+    convertBtn.disabled = false;
+    convertBtn.textContent = "아이콘 세트 만들기";
+
+    result.classList.remove("visible");
+    iconSetResult.classList.add("visible");
+    iconSetResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function convertSingleImage() {
     var dims = computeTargetDims();
 
     var canvas = document.createElement("canvas");
@@ -201,11 +328,21 @@
         downloadBtn.href = url;
         downloadBtn.download = baseName + "-resized." + ext;
 
+        iconSetResult.classList.remove("visible");
         result.classList.add("visible");
         result.scrollIntoView({ behavior: "smooth", block: "nearest" });
       },
       outMime,
       quality
     );
+  }
+
+  convertBtn.addEventListener("click", function () {
+    if (!originalImage) return;
+    if (STORE_MODES.indexOf(currentMode) !== -1) {
+      generateIconSet(currentMode);
+    } else {
+      convertSingleImage();
+    }
   });
 })();
