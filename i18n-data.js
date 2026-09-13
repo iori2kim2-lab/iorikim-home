@@ -71,10 +71,11 @@ window.I18N_DATA = {
     },
     convert: {
       title: "이미지 변환기",
-      desc: "아이폰 HEIC 사진을 포함해서 JPG, PNG, WebP로 서로 바꿔드려요.",
-      pageDesc: "아이폰 HEIC 사진을 포함해서 JPG, PNG, WebP로 서로 바꿔드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.",
-      dropzoneHint: "JPG, PNG, WebP, HEIC(아이폰 사진) 지원",
+      desc: "아이폰 HEIC, 포토샵 PSD까지 포함해서 JPG, PNG, WebP로 서로 바꿔드려요.",
+      pageDesc: "아이폰 HEIC 사진과 포토샵 PSD 파일까지 포함해서 JPG, PNG, WebP로 서로 바꿔드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.",
+      dropzoneHint: "JPG, PNG, WebP, HEIC(아이폰 사진), PSD(포토샵) 지원",
       decodingHeic: "HEIC 디코딩 중…",
+      decodingPsd: "PSD 파일을 여는 중…",
       loadFailAlert: "이미지를 불러오지 못했어요. 다른 파일로 시도해보세요.",
     },
     upscale: {
@@ -183,10 +184,11 @@ window.I18N_DATA = {
     },
     convert: {
       title: "Image Converter",
-      desc: "Convert between JPG, PNG, and WebP — iPhone HEIC photos included.",
-      pageDesc: "Convert between JPG, PNG, and WebP — iPhone HEIC included. Nothing is uploaded; it all happens right in your browser.",
-      dropzoneHint: "Supports JPG, PNG, WebP, HEIC (iPhone photos)",
+      desc: "Convert between JPG, PNG, and WebP — iPhone HEIC and Photoshop PSD included.",
+      pageDesc: "Convert between JPG, PNG, and WebP — iPhone HEIC and Photoshop PSD included. Nothing is uploaded; it all happens right in your browser.",
+      dropzoneHint: "Supports JPG, PNG, WebP, HEIC (iPhone photos), PSD (Photoshop)",
       decodingHeic: "Decoding HEIC…",
+      decodingPsd: "Opening PSD file…",
       loadFailAlert: "Couldn't load the image. Try a different file.",
     },
     upscale: {
@@ -295,10 +297,11 @@ window.I18N_DATA = {
     },
     convert: {
       title: "画像変換ツール",
-      desc: "iPhoneのHEIC写真も含めて、JPG・PNG・WebP間で変換します。",
-      pageDesc: "iPhoneのHEIC写真も含めて、JPG・PNG・WebP間で変換します。画像はアップロードされず、ブラウザ内だけで処理されます。",
-      dropzoneHint: "JPG, PNG, WebP, HEIC(iPhone写真)に対応",
+      desc: "iPhoneのHEIC写真やPhotoshopのPSDも含めて、JPG・PNG・WebP間で変換します。",
+      pageDesc: "iPhoneのHEIC写真やPhotoshopのPSDファイルも含めて、JPG・PNG・WebP間で変換します。画像はアップロードされず、ブラウザ内だけで処理されます。",
+      dropzoneHint: "JPG, PNG, WebP, HEIC(iPhone写真), PSD(Photoshop)に対応",
       decodingHeic: "HEICをデコード中…",
+      decodingPsd: "PSDファイルを開いています…",
       loadFailAlert: "画像を読み込めませんでした。別のファイルでお試しください。",
     },
     upscale: {
@@ -407,10 +410,11 @@ window.I18N_DATA = {
     },
     convert: {
       title: "图片格式转换",
-      desc: "支持 iPhone HEIC 照片,可在 JPG、PNG、WebP 间互相转换。",
-      pageDesc: "支持 iPhone HEIC 照片,可在 JPG、PNG、WebP 间互相转换。图片不会被上传,全部在浏览器本地完成。",
-      dropzoneHint: "支持 JPG、PNG、WebP、HEIC(iPhone 照片)",
+      desc: "支持 iPhone HEIC 和 Photoshop PSD,可在 JPG、PNG、WebP 间互相转换。",
+      pageDesc: "支持 iPhone HEIC 照片和 Photoshop PSD 文件,可在 JPG、PNG、WebP 间互相转换。图片不会被上传,全部在浏览器本地完成。",
+      dropzoneHint: "支持 JPG、PNG、WebP、HEIC(iPhone 照片)、PSD(Photoshop)",
       decodingHeic: "正在解码 HEIC…",
+      decodingPsd: "正在打开 PSD 文件…",
       loadFailAlert: "无法加载图片,请尝试其他文件。",
     },
     upscale: {

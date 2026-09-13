@@ -36,8 +36,39 @@
     return type === "image/heic" || type === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
   }
 
+  function isPsd(file) {
+    var name = (file.name || "").toLowerCase();
+    var type = (file.type || "").toLowerCase();
+    return type === "image/vnd.adobe.photoshop" || name.endsWith(".psd") || name.endsWith(".psb");
+  }
+
+  var psdModulePromise = null;
+  function loadPsdModule() {
+    if (!psdModulePromise) {
+      psdModulePromise = import("https://cdn.jsdelivr.net/npm/@webtoon/psd@0.4.0/+esm");
+    }
+    return psdModulePromise;
+  }
+
+  async function psdToDataUrl(file) {
+    var mod = await loadPsdModule();
+    var Psd = mod.default || mod.Psd || mod;
+    var buffer = await file.arrayBuffer();
+    var psdFile = Psd.parse(buffer);
+    var compositeBuffer = await psdFile.composite();
+    var pixels =
+      compositeBuffer instanceof Uint8ClampedArray ? compositeBuffer : new Uint8ClampedArray(compositeBuffer);
+    var canvas = document.createElement("canvas");
+    canvas.width = psdFile.width;
+    canvas.height = psdFile.height;
+    var ctx = canvas.getContext("2d");
+    ctx.putImageData(new ImageData(pixels, psdFile.width, psdFile.height), 0, 0);
+    return canvas.toDataURL("image/png");
+  }
+
   function detectFormatLabel(file) {
     if (isHeic(file)) return "HEIC";
+    if (isPsd(file)) return "PSD";
     var type = (file.type || "").toLowerCase();
     if (type === "image/jpeg") return "JPEG";
     if (type === "image/png") return "PNG";
@@ -98,14 +129,18 @@
   });
 
   async function handleFile(file) {
-    var looksLikeImage = file.type.startsWith("image/") || isHeic(file);
+    var looksLikeImage = file.type.startsWith("image/") || isHeic(file) || isPsd(file);
     if (!looksLikeImage) {
       alert(t("common.imageOnlyAlert"));
       return;
     }
 
     originalFile = file;
-    dropzoneTitle.textContent = isHeic(file) ? t("convert.decodingHeic") : t("common.loading");
+    dropzoneTitle.textContent = isHeic(file)
+      ? t("convert.decodingHeic")
+      : isPsd(file)
+      ? t("convert.decodingPsd")
+      : t("common.loading");
 
     try {
       var dataUrl;
@@ -113,6 +148,8 @@
         var convertedBlob = await heic2any({ blob: file, toType: "image/png" });
         if (Array.isArray(convertedBlob)) convertedBlob = convertedBlob[0];
         dataUrl = await blobToDataUrl(convertedBlob);
+      } else if (isPsd(file)) {
+        dataUrl = await psdToDataUrl(file);
       } else {
         dataUrl = await blobToDataUrl(file);
       }
@@ -128,6 +165,7 @@
       result.classList.remove("visible");
       updateQualityVisibility();
     } catch (err) {
+      console.error(err);
       alert(t("convert.loadFailAlert"));
     } finally {
       dropzoneTitle.textContent = t("common.dropzoneDefault");
