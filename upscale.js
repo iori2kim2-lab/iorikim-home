@@ -107,6 +107,32 @@
     return canvas;
   }
 
+  // Larger patch sizes are faster but use more memory per tile; on
+  // lower-end devices or heavy/detailed photos that can throw (WebGL out
+  // of memory, etc). Retry progressively smaller before giving up.
+  var PATCH_SIZE_ATTEMPTS = [128, 64, 32];
+
+  async function upscaleWithRetry(srcCanvas) {
+    var lastErr = null;
+    for (var i = 0; i < PATCH_SIZE_ATTEMPTS.length; i++) {
+      try {
+        if (!upscalerInstance) {
+          upscalerInstance = new Upscaler({ model: DefaultUpscalerJSModel });
+        }
+        return await upscalerInstance.upscale(srcCanvas, {
+          patchSize: PATCH_SIZE_ATTEMPTS[i],
+          padding: 2,
+        });
+      } catch (err) {
+        lastErr = err;
+        console.error("upscale attempt failed (patchSize=" + PATCH_SIZE_ATTEMPTS[i] + ")", err);
+        // the backend/model state may be corrupted after a failure; rebuild fresh next try
+        upscalerInstance = null;
+      }
+    }
+    throw lastErr;
+  }
+
   upscaleBtn.addEventListener("click", async function () {
     if (!originalImage) return;
     upscaleBtn.disabled = true;
@@ -114,15 +140,7 @@
 
     try {
       var srcCanvas = prepareSourceCanvas(originalImage, MAX_INPUT_EDGE);
-
-      if (!upscalerInstance) {
-        upscalerInstance = new Upscaler({ model: DefaultUpscalerJSModel });
-      }
-
-      var resultSrc = await upscalerInstance.upscale(srcCanvas, {
-        patchSize: 128,
-        padding: 2,
-      });
+      var resultSrc = await upscaleWithRetry(srcCanvas);
 
       var blob = await fetch(resultSrc).then(function (r) {
         return r.blob();
