@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>이미지 변환기 — iorikim</title>
+<meta name="description" content="HEIC(아이폰 사진)를 포함해 JPG, PNG, WebP로 서로 변환하세요. 브라우저 안에서 바로 처리됩니다." />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%236d5bff%22/><text x=%2250%22 y=%2266%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22800%22>io</text></svg>" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-nav">
+    <a href="index.html" class="brand">
+      <span class="brand-badge">io</span>
+      iorikim
+    </a>
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="light">☀️ 일반</button>
+      <button data-theme="dark">🌙 다크</button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap tool-page">
+  <div class="tool-page-header">
+    <a href="index.html" class="back-link">← 홈으로</a>
+    <h1>🔄 이미지 변환기</h1>
+    <p>아이폰 HEIC 사진을 포함해서 JPG, PNG, WebP로 서로 바꿔드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+  </div>
+
+  <div class="panel">
+    <div class="dropzone" id="dropzone">
+      <p><strong>클릭하거나 이미지를 끌어다 놓으세요</strong></p>
+      <p>JPG, PNG, WebP, HEIC(아이폰 사진) 지원</p>
+      <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden />
+    </div>
+
+    <div class="controls" id="controls" style="display:none;">
+
+      <div class="field">
+        <label>출력 형식</label>
+        <select id="formatSelect">
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/png">PNG</option>
+          <option value="image/webp">WebP</option>
+        </select>
+      </div>
+
+      <div class="field" id="qualityField">
+        <label>품질: <span id="qualityValue">90</span>%</label>
+        <input type="range" id="qualityRange" min="10" max="100" value="90" />
+      </div>
+
+      <button class="primary-btn" id="convertBtn">변환하기</button>
+    </div>
+
+    <div class="result" id="result">
+      <div class="compare">
+        <figure>
+          <img id="beforeImg" alt="원본 이미지" />
+          <figcaption>원본 · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
+        </figure>
+        <figure>
+          <img id="afterImg" alt="변환된 이미지" />
+          <figcaption>변환 후 · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
+        </figure>
+      </div>
+      <div class="stats-row">
+        <span class="save" id="saveStat"></span>
+      </div>
+      <a class="primary-btn download-btn" id="downloadBtn" download>다운로드</a>
+      <p class="hint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js"></script>
+<script src="theme.js"></script>
+<script src="convert.js"></script>
+</body>
+</html>
