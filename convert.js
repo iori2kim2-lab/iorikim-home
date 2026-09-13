@@ -45,25 +45,17 @@
   var psdModulePromise = null;
   function loadPsdModule() {
     if (!psdModulePromise) {
-      psdModulePromise = import("https://cdn.jsdelivr.net/npm/@webtoon/psd@0.4.0/+esm");
+      psdModulePromise = import("https://cdn.jsdelivr.net/npm/ag-psd@31.0.2/+esm");
     }
     return psdModulePromise;
   }
 
   async function psdToDataUrl(file) {
     var mod = await loadPsdModule();
-    var Psd = mod.default || mod.Psd || mod;
     var buffer = await file.arrayBuffer();
-    var psdFile = Psd.parse(buffer);
-    var compositeBuffer = await psdFile.composite();
-    var pixels =
-      compositeBuffer instanceof Uint8ClampedArray ? compositeBuffer : new Uint8ClampedArray(compositeBuffer);
-    var canvas = document.createElement("canvas");
-    canvas.width = psdFile.width;
-    canvas.height = psdFile.height;
-    var ctx = canvas.getContext("2d");
-    ctx.putImageData(new ImageData(pixels, psdFile.width, psdFile.height), 0, 0);
-    return canvas.toDataURL("image/png");
+    var psd = mod.readPsd(buffer, { skipLayerImageData: true });
+    if (!psd.canvas) throw new Error("PSD has no renderable composite image");
+    return psd.canvas.toDataURL("image/png");
   }
 
   function detectFormatLabel(file) {
