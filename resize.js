@@ -48,7 +48,7 @@
 
   var ICON_SPECS = {
     "google-play": {
-      info: "스토어 등록용 512×512 아이콘과 런처 아이콘 5종(mdpi~xxxhdpi)을 Android 프로젝트에 바로 넣을 수 있는 mipmap 폴더 구조로 묶어드려요.",
+      infoKey: "resize.storeInfoGooglePlay",
       background: null,
       zipName: "google-play-icons.zip",
       icons: [
@@ -61,7 +61,7 @@
       ],
     },
     "apple-store": {
-      info: "App Store 등록용 1024×1024 아이콘과 iPhone·iPad용 아이콘까지 총 13개 사이즈를 만들어드려요. 투명 배경은 흰색으로 채워져요(애플 정책상 투명 아이콘 불가).",
+      infoKey: "resize.storeInfoAppleStore",
       background: "#ffffff",
       zipName: "app-store-icons.zip",
       icons: [
@@ -117,7 +117,7 @@
 
   function handleFile(file) {
     if (!file.type.startsWith("image/")) {
-      alert("이미지 파일만 지원해요.");
+      alert(t("common.imageOnlyAlert"));
       return;
     }
     originalFile = file;
@@ -164,11 +164,11 @@
 
     if (isStoreMode) {
       storeInfoField.style.display = "block";
-      storeInfoText.textContent = ICON_SPECS[currentMode].info;
-      convertBtn.textContent = "아이콘 세트 만들기";
+      storeInfoText.textContent = t(ICON_SPECS[currentMode].infoKey);
+      convertBtn.textContent = t("resize.makeIconSetBtn");
     } else {
       storeInfoField.style.display = "none";
-      convertBtn.textContent = "변환하기";
+      convertBtn.textContent = t("resize.convertBtn");
       updateQualityVisibility();
     }
 
@@ -249,7 +249,7 @@
   async function generateIconSet(specKey) {
     var spec = ICON_SPECS[specKey];
     convertBtn.disabled = true;
-    convertBtn.textContent = "만드는 중…";
+    convertBtn.textContent = t("resize.generatingIcons");
     iconGrid.innerHTML = "";
 
     var zip = new JSZip();
@@ -276,11 +276,13 @@
     var zipUrl = URL.createObjectURL(zipBlob);
     iconZipBtn.href = zipUrl;
     iconZipBtn.download = spec.zipName;
-    iconSetSummary.textContent =
-      spec.icons.length + "개 아이콘 파일 생성 완료 · 압축 " + formatBytes(zipBlob.size);
+    iconSetSummary.textContent = t("resize.iconSummary", {
+      count: spec.icons.length,
+      size: formatBytes(zipBlob.size),
+    });
 
     convertBtn.disabled = false;
-    convertBtn.textContent = "아이콘 세트 만들기";
+    convertBtn.textContent = t("resize.makeIconSetBtn");
 
     result.classList.remove("visible");
     iconSetResult.classList.add("visible");
@@ -306,7 +308,7 @@
     canvas.toBlob(
       function (blob) {
         if (!blob) {
-          alert("변환에 실패했어요. 다른 형식으로 시도해보세요.");
+          alert(t("resize.convertFailAlert"));
           return;
         }
         var url = URL.createObjectURL(blob);
@@ -316,7 +318,7 @@
 
         var savedPct = Math.min(99, Math.round((1 - blob.size / originalFile.size) * 100));
         if (savedPct > 0) {
-          saveStat.textContent = "용량 " + savedPct + "% 절약됨";
+          saveStat.textContent = t("resize.savedPercent", { pct: savedPct });
           saveStat.style.display = "inline";
         } else {
           saveStat.textContent = "";
@@ -343,6 +345,16 @@
       generateIconSet(currentMode);
     } else {
       convertSingleImage();
+    }
+  });
+
+  document.addEventListener("langchange", function () {
+    if (convertBtn.disabled) return;
+    if (STORE_MODES.indexOf(currentMode) !== -1) {
+      storeInfoText.textContent = t(ICON_SPECS[currentMode].infoKey);
+      convertBtn.textContent = t("resize.makeIconSetBtn");
+    } else {
+      convertBtn.textContent = t("resize.convertBtn");
     }
   });
 })();

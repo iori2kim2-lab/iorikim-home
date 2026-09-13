@@ -7,7 +7,6 @@
   var result = document.getElementById("result");
   var resizeNote = document.getElementById("resizeNote");
   var upscaleBtn = document.getElementById("upscaleBtn");
-  var defaultBtnText = upscaleBtn.textContent;
 
   var beforeImg = document.getElementById("beforeImg");
   var afterImg = document.getElementById("afterImg");
@@ -56,7 +55,7 @@
 
   function handleFile(file) {
     if (!file.type.startsWith("image/")) {
-      alert("이미지 파일만 지원해요.");
+      alert(t("common.imageOnlyAlert"));
       return;
     }
     originalFile = file;
@@ -75,11 +74,12 @@
           var scale = MAX_INPUT_EDGE / longEdge;
           var w = Math.round(img.naturalWidth * scale);
           var h = Math.round(img.naturalHeight * scale);
-          resizeNote.textContent =
-            "원본이 커서 " + w + "×" + h + "px로 먼저 줄인 다음 2배로 업스케일해요.";
+          resizeNote.textContent = t("upscale.resizeNoteBig", { w: w, h: h });
         } else {
-          resizeNote.textContent =
-            "업스케일 후 " + img.naturalWidth * 2 + "×" + img.naturalHeight * 2 + "px가 돼요.";
+          resizeNote.textContent = t("upscale.resizeNoteNormal", {
+            w: img.naturalWidth * 2,
+            h: img.naturalHeight * 2,
+          });
         }
 
         controls.style.display = "grid";
@@ -106,7 +106,7 @@
   upscaleBtn.addEventListener("click", async function () {
     if (!originalImage) return;
     upscaleBtn.disabled = true;
-    upscaleBtn.textContent = "업스케일 중… (모델 로딩 포함 최대 1분)";
+    upscaleBtn.textContent = t("upscale.processingBtn");
 
     try {
       var srcCanvas = prepareSourceCanvas(originalImage, MAX_INPUT_EDGE);
@@ -137,10 +137,10 @@
       result.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (err) {
       console.error(err);
-      alert("업스케일에 실패했어요. 이미지 용량을 줄이거나 다른 브라우저에서 시도해보세요.");
+      alert(t("upscale.upscaleFailAlert"));
     } finally {
       upscaleBtn.disabled = false;
-      upscaleBtn.textContent = defaultBtnText;
+      upscaleBtn.textContent = t("upscale.upscaleBtn");
     }
   });
 })();

@@ -28,12 +28,12 @@
         iorikim
       </a>
       <div class="theme-toggle" id="themeToggle">
-        <button data-theme="light">☀️ 일반</button>
-        <button data-theme="dark">🌙 다크</button>
+        <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+        <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
       </div>
     </div>
     <div class="wrap" style="padding-top:16px;">
-      <a href="index.html" class="back-link">← 홈으로</a>
+      <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
     </div>
   </header>
 
@@ -44,6 +44,8 @@
   </div>
 </div>
 
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
 <script src="theme.js"></script>
 <script>
   document.getElementById('bgFrame').addEventListener('error', function () {

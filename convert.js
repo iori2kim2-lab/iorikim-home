@@ -20,7 +20,6 @@
   var downloadBtn = document.getElementById("downloadBtn");
 
   var dropzoneTitle = dropzone.querySelector("strong");
-  var defaultDropzoneTitle = dropzoneTitle.textContent;
 
   var originalFile = null;
   var originalImage = null;
@@ -101,12 +100,12 @@
   async function handleFile(file) {
     var looksLikeImage = file.type.startsWith("image/") || isHeic(file);
     if (!looksLikeImage) {
-      alert("이미지 파일만 지원해요.");
+      alert(t("common.imageOnlyAlert"));
       return;
     }
 
     originalFile = file;
-    dropzoneTitle.textContent = isHeic(file) ? "HEIC 디코딩 중…" : "불러오는 중…";
+    dropzoneTitle.textContent = isHeic(file) ? t("convert.decodingHeic") : t("common.loading");
 
     try {
       var dataUrl;
@@ -129,9 +128,9 @@
       result.classList.remove("visible");
       updateQualityVisibility();
     } catch (err) {
-      alert("이미지를 불러오지 못했어요. 다른 파일로 시도해보세요.");
+      alert(t("convert.loadFailAlert"));
     } finally {
-      dropzoneTitle.textContent = defaultDropzoneTitle;
+      dropzoneTitle.textContent = t("common.dropzoneDefault");
     }
   }
 
@@ -165,7 +164,7 @@
     canvas.toBlob(
       function (blob) {
         if (!blob) {
-          alert("변환에 실패했어요. 다른 형식으로 시도해보세요.");
+          alert(t("resize.convertFailAlert"));
           return;
         }
         var url = URL.createObjectURL(blob);
@@ -175,7 +174,7 @@
 
         var savedPct = Math.min(99, Math.round((1 - blob.size / originalFile.size) * 100));
         if (savedPct > 0) {
-          saveStat.textContent = "용량 " + savedPct + "% 절약됨";
+          saveStat.textContent = t("resize.savedPercent", { pct: savedPct });
           saveStat.style.display = "inline";
         } else {
           saveStat.textContent = "";

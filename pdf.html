@@ -19,58 +19,60 @@
       iorikim
     </a>
     <div class="theme-toggle" id="themeToggle">
-      <button data-theme="light">☀️ 일반</button>
-      <button data-theme="dark">🌙 다크</button>
+      <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+      <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
     </div>
   </div>
 </header>
 
 <section class="wrap tool-page">
   <div class="tool-page-header">
-    <a href="index.html" class="back-link">← 홈으로</a>
-    <h1>📄 이미지를 PDF로</h1>
-    <p>여러 장의 사진(HEIC 포함)을 골라서 PDF 한 파일로 합쳐드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+    <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
+    <h1><span class="tool-emoji">📄</span> <span data-i18n="pdf.title">이미지를 PDF로</span></h1>
+    <p data-i18n="pdf.pageDesc">여러 장의 사진(HEIC 포함)을 골라서 PDF 한 파일로 합쳐드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
   </div>
 
   <div class="panel">
     <div class="dropzone" id="dropzone">
-      <p><strong>클릭하거나 이미지를 끌어다 놓으세요</strong></p>
-      <p>여러 장 한 번에 선택 가능 · JPG, PNG, WebP, HEIC 지원</p>
+      <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
+      <p data-i18n="pdf.dropzoneHint">여러 장 한 번에 선택 가능 · JPG, PNG, WebP, HEIC 지원</p>
       <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden />
     </div>
 
     <div class="controls" id="controls" style="display:none;">
       <div class="field">
-        <label>담은 이미지 (<span id="fileCount">0</span>장) · 순서대로 페이지가 됩니다</label>
+        <label id="fileListLabel"></label>
         <div class="file-list" id="fileList"></div>
       </div>
 
       <div class="field">
-        <label>페이지 크기</label>
+        <label data-i18n="pdf.pageSizeLabel">페이지 크기</label>
         <select id="pageSizeSelect">
           <option value="a4">A4</option>
           <option value="letter">Letter</option>
-          <option value="fit">이미지 크기 그대로</option>
+          <option value="fit" data-i18n="pdf.pageSizeFit">이미지 크기 그대로</option>
         </select>
       </div>
 
-      <button class="primary-btn" id="makePdfBtn">PDF로 합치기</button>
+      <button class="primary-btn" id="makePdfBtn" data-i18n="pdf.makePdfBtn">PDF로 합치기</button>
     </div>
 
     <div class="result" id="result">
       <p class="hint" id="pdfSummary" style="text-align:left;margin:0;"></p>
-      <a class="primary-btn download-btn" id="downloadBtn" download>PDF 다운로드</a>
-      <p class="hint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      <a class="primary-btn download-btn" id="downloadBtn" download data-i18n="pdf.downloadPdfBtn">PDF 다운로드</a>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
     </div>
   </div>
 </section>
 
 <footer class="site">
-  <div class="wrap">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+  <div class="wrap" data-i18n="common.footer">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
 <script src="theme.js"></script>
 <script src="pdf.js"></script>
 </body>

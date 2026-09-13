@@ -5,10 +5,9 @@
   var result = document.getElementById("result");
 
   var fileList = document.getElementById("fileList");
-  var fileCount = document.getElementById("fileCount");
+  var fileListLabel = document.getElementById("fileListLabel");
   var pageSizeSelect = document.getElementById("pageSizeSelect");
   var makePdfBtn = document.getElementById("makePdfBtn");
-  var defaultBtnText = makePdfBtn.textContent;
 
   var pdfSummary = document.getElementById("pdfSummary");
   var downloadBtn = document.getElementById("downloadBtn");
@@ -111,7 +110,7 @@
   }
 
   function renderFileList() {
-    fileCount.textContent = items.length;
+    fileListLabel.textContent = t("pdf.fileListLabel", { count: items.length });
     fileList.innerHTML = "";
 
     items.forEach(function (item, index) {
@@ -124,7 +123,7 @@
 
       var name = document.createElement("span");
       name.className = "file-name";
-      name.textContent = item.file.name || "이미지 " + (index + 1);
+      name.textContent = item.file.name || index + 1;
 
       var actions = document.createElement("div");
       actions.className = "file-actions";
@@ -189,7 +188,7 @@
   makePdfBtn.addEventListener("click", async function () {
     if (!items.length) return;
     makePdfBtn.disabled = true;
-    makePdfBtn.textContent = "PDF 만드는 중…";
+    makePdfBtn.textContent = t("pdf.generatingPdf");
 
     try {
       var jsPDFCtor = window.jspdf.jsPDF;
@@ -241,8 +240,7 @@
 
       var blob = doc.output("blob");
       var url = URL.createObjectURL(blob);
-      pdfSummary.textContent =
-        items.length + "장 · " + items.length + "페이지 PDF · " + formatBytes(blob.size);
+      pdfSummary.textContent = t("pdf.summary", { count: items.length, size: formatBytes(blob.size) });
       downloadBtn.href = url;
       downloadBtn.download = "images.pdf";
 
@@ -250,10 +248,14 @@
       result.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (err) {
       console.error(err);
-      alert("PDF를 만들지 못했어요. 이미지를 줄이거나 다시 시도해보세요.");
+      alert(t("pdf.pdfFailAlert"));
     } finally {
       makePdfBtn.disabled = false;
-      makePdfBtn.textContent = defaultBtnText;
+      makePdfBtn.textContent = t("pdf.makePdfBtn");
     }
+  });
+
+  document.addEventListener("langchange", function () {
+    if (items.length) renderFileList();
   });
 })();

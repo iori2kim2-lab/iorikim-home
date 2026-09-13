@@ -1,7 +1,17 @@
 [
   {
-    "title": "강아지&고양이 플라이",
-    "description": "세로형 슈팅 게임. 좌우로 움직이며 자동으로 공격하고, 스페이스바로 필살기를 써보세요.",
+    "title": {
+      "ko": "강아지&고양이 플라이",
+      "en": "Pup & Cat Flight",
+      "ja": "わんにゃんフライト",
+      "zh": "猫狗飞行"
+    },
+    "description": {
+      "ko": "세로형 슈팅 게임. 좌우로 움직이며 자동으로 공격하고, 스페이스바로 필살기를 써보세요.",
+      "en": "A vertical shooter — move left and right, auto-attack, and unleash your special move with Space.",
+      "ja": "縦スクロールシューティングゲーム。左右に動いて自動攻撃、スペースキーで必殺技を発動。",
+      "zh": "竖版射击小游戏，左右移动自动攻击，按空格键释放必杀技。"
+    },
     "icon": "🐾",
     "file": "pet-flight.html",
     "preview": "../previews/pet-flight.svg"

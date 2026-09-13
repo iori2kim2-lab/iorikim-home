@@ -19,46 +19,46 @@
       iorikim
     </a>
     <div class="theme-toggle" id="themeToggle">
-      <button data-theme="light">☀️ 일반</button>
-      <button data-theme="dark">🌙 다크</button>
+      <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+      <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
     </div>
   </div>
 </header>
 
 <section class="wrap tool-page">
   <div class="tool-page-header">
-    <a href="index.html" class="back-link">← 홈으로</a>
-    <h1>🖼️ 이미지 리사이즈</h1>
-    <p>사진 크기와 용량을 원하는 만큼 줄여드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+    <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
+    <h1><span class="tool-emoji">🖼️</span> <span data-i18n="resize.title">이미지 리사이즈</span></h1>
+    <p data-i18n="resize.pageDesc">사진 크기와 용량을 원하는 만큼 줄여드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
   </div>
 
   <div class="panel">
     <div class="dropzone" id="dropzone">
-      <p><strong>클릭하거나 이미지를 끌어다 놓으세요</strong></p>
-      <p>JPG, PNG, WebP 지원</p>
+      <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
+      <p data-i18n="resize.dropzoneHint">JPG, PNG, WebP 지원</p>
       <input type="file" id="fileInput" accept="image/*" hidden />
     </div>
 
     <div class="controls" id="controls" style="display:none;">
 
       <div class="field">
-        <label>크기 조절 방식</label>
+        <label data-i18n="resize.modeLabel">크기 조절 방식</label>
         <div class="mode-tabs" id="modeTabs">
-          <button data-mode="percent" class="active">배율(%)</button>
-          <button data-mode="exact">가로 × 세로</button>
-          <button data-mode="longedge">긴 변 기준</button>
-          <button data-mode="google-play">구글 플레이 아이콘</button>
-          <button data-mode="apple-store">애플 스토어 아이콘</button>
+          <button data-mode="percent" class="active" data-i18n="resize.modePercent">배율(%)</button>
+          <button data-mode="exact" data-i18n="resize.modeExact">가로 × 세로</button>
+          <button data-mode="longedge" data-i18n="resize.modeLongEdge">긴 변 기준</button>
+          <button data-mode="google-play" data-i18n="resize.modeGooglePlay">구글 플레이 아이콘</button>
+          <button data-mode="apple-store" data-i18n="resize.modeAppleStore">애플 스토어 아이콘</button>
         </div>
       </div>
 
       <div class="field" id="percentField">
-        <label>배율: <span id="percentValue">100</span>%</label>
+        <label><span data-i18n="resize.percentLabelPrefix">배율: </span><span id="percentValue">100</span>%</label>
         <input type="range" id="percentRange" min="1" max="100" value="100" />
       </div>
 
       <div class="field" id="exactField" style="display:none;">
-        <label>가로 × 세로 (px)</label>
+        <label data-i18n="resize.exactLabel">가로 × 세로 (px)</label>
         <div class="field-row">
           <input type="number" id="widthInput" min="1" />
           <span>×</span>
@@ -66,12 +66,12 @@
         </div>
         <div class="checkbox-row">
           <input type="checkbox" id="lockAspect" checked />
-          <label for="lockAspect">비율 유지</label>
+          <label for="lockAspect" data-i18n="resize.lockAspect">비율 유지</label>
         </div>
       </div>
 
       <div class="field" id="longedgeField" style="display:none;">
-        <label>긴 변 최대 길이 (px)</label>
+        <label data-i18n="resize.longEdgeLabel">긴 변 최대 길이 (px)</label>
         <input type="number" id="longEdgeInput" min="1" value="1920" />
       </div>
 
@@ -80,9 +80,9 @@
       </div>
 
       <div class="field" id="formatField">
-        <label>출력 형식</label>
+        <label data-i18n="resize.formatLabel">출력 형식</label>
         <select id="formatSelect">
-          <option value="auto">원본 형식 유지</option>
+          <option value="auto" data-i18n="resize.formatAuto">원본 형식 유지</option>
           <option value="image/jpeg">JPEG</option>
           <option value="image/png">PNG</option>
           <option value="image/webp">WebP</option>
@@ -90,45 +90,47 @@
       </div>
 
       <div class="field" id="qualityField">
-        <label>품질: <span id="qualityValue">85</span>%</label>
+        <label><span data-i18n="resize.qualityLabelPrefix">품질: </span><span id="qualityValue">85</span>%</label>
         <input type="range" id="qualityRange" min="10" max="100" value="85" />
       </div>
 
-      <button class="primary-btn" id="convertBtn">변환하기</button>
+      <button class="primary-btn" id="convertBtn" data-i18n="resize.convertBtn">변환하기</button>
     </div>
 
     <div class="result" id="result">
       <div class="compare">
         <figure>
           <img id="beforeImg" alt="원본 이미지" />
-          <figcaption>원본 · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
+          <figcaption><span data-i18n="common.original">원본</span> · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
         </figure>
         <figure>
           <img id="afterImg" alt="변환된 이미지" />
-          <figcaption>변환 후 · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
+          <figcaption><span data-i18n="resize.resultConverted">변환 후</span> · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
         </figure>
       </div>
       <div class="stats-row">
         <span class="save" id="saveStat"></span>
       </div>
-      <a class="primary-btn download-btn" id="downloadBtn" download>다운로드</a>
-      <p class="hint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      <a class="primary-btn download-btn" id="downloadBtn" download data-i18n="common.downloadBtn">다운로드</a>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
     </div>
 
     <div class="result" id="iconSetResult">
       <p class="hint" id="iconSetSummary" style="text-align:left;margin:0 0 4px;"></p>
       <div class="icon-grid" id="iconGrid"></div>
-      <a class="primary-btn download-btn" id="iconZipBtn" download>ZIP으로 전체 다운로드</a>
-      <p class="hint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      <a class="primary-btn download-btn" id="iconZipBtn" download data-i18n="resize.iconZipBtn">ZIP으로 전체 다운로드</a>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
     </div>
   </div>
 </section>
 
 <footer class="site">
-  <div class="wrap">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+  <div class="wrap" data-i18n="common.footer">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
 <script src="theme.js"></script>
 <script src="resize.js"></script>
 </body>

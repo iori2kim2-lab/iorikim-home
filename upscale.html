@@ -19,23 +19,23 @@
       iorikim
     </a>
     <div class="theme-toggle" id="themeToggle">
-      <button data-theme="light">☀️ 일반</button>
-      <button data-theme="dark">🌙 다크</button>
+      <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+      <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
     </div>
   </div>
 </header>
 
 <section class="wrap tool-page">
   <div class="tool-page-header">
-    <a href="index.html" class="back-link">← 홈으로</a>
-    <h1>✨ 이미지 업스케일러</h1>
-    <p>AI로 이미지를 2배 더 선명하게 확대해드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+    <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
+    <h1><span class="tool-emoji">✨</span> <span data-i18n="upscale.title">이미지 업스케일러</span></h1>
+    <p data-i18n="upscale.pageDesc">AI로 이미지를 2배 더 선명하게 확대해드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
   </div>
 
   <div class="panel">
     <div class="dropzone" id="dropzone">
-      <p><strong>클릭하거나 이미지를 끌어다 놓으세요</strong></p>
-      <p>JPG, PNG, WebP 지원 · 처음 사용 시 AI 모델을 한 번 받아요</p>
+      <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
+      <p data-i18n="upscale.dropzoneHint">JPG, PNG, WebP 지원 · 처음 사용 시 AI 모델을 한 번 받아요</p>
       <input type="file" id="fileInput" accept="image/*" hidden />
     </div>
 
@@ -43,34 +43,36 @@
       <div class="field">
         <p class="hint" id="resizeNote" style="text-align:left;margin:0;"></p>
       </div>
-      <button class="primary-btn" id="upscaleBtn">2배 업스케일 하기</button>
-      <p class="hint">사진 크기에 따라 몇 초에서 최대 1분 정도 걸릴 수 있어요.</p>
+      <button class="primary-btn" id="upscaleBtn" data-i18n="upscale.upscaleBtn">2배 업스케일 하기</button>
+      <p class="hint" data-i18n="upscale.timeHint">사진 크기에 따라 몇 초에서 최대 1분 정도 걸릴 수 있어요.</p>
     </div>
 
     <div class="result" id="result">
       <div class="compare">
         <figure>
           <img id="beforeImg" data-lightbox alt="원본 이미지" />
-          <figcaption>원본 · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
+          <figcaption><span data-i18n="common.original">원본</span> · <b id="beforeSize"></b> · <span id="beforeDims"></span></figcaption>
         </figure>
         <figure>
           <img id="afterImg" data-lightbox alt="업스케일된 이미지" />
-          <figcaption>업스케일 후 · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
+          <figcaption><span data-i18n="upscale.resultAfter">업스케일 후</span> · <b id="afterSize"></b> · <span id="afterDims"></span></figcaption>
         </figure>
       </div>
-      <a class="primary-btn download-btn" id="downloadBtn" download>다운로드</a>
-      <p class="hint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      <a class="primary-btn download-btn" id="downloadBtn" download data-i18n="common.downloadBtn">다운로드</a>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
     </div>
   </div>
 </section>
 
 <footer class="site">
-  <div class="wrap">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+  <div class="wrap" data-i18n="common.footer">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js"></script>
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
 <script src="theme.js"></script>
 <script src="lightbox.js"></script>
 <script src="upscale.js"></script>
