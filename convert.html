@@ -35,11 +35,16 @@
   <div class="panel">
     <div class="dropzone" id="dropzone">
       <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
-      <p data-i18n="convert.dropzoneHint">JPG, PNG, WebP, HEIC(아이폰 사진) 지원</p>
-      <input type="file" id="fileInput" accept="image/*,.heic,.heif,.psd,.psb" hidden />
+      <p data-i18n="convert.dropzoneHint">최대 10장까지 한 번에 선택 가능 · JPG, PNG, WebP, HEIC(아이폰 사진), PSD(포토샵) 지원</p>
+      <input type="file" id="fileInput" accept="image/*,.heic,.heif,.psd,.psb" multiple hidden />
     </div>
 
     <div class="controls" id="controls" style="display:none;">
+
+      <div class="field" id="stackField" hidden>
+        <label id="stackLabel"></label>
+        <div class="stack-pile" id="stackPile"></div>
+      </div>
 
       <div class="field">
         <label data-i18n="resize.formatLabel">출력 형식</label>
@@ -76,6 +81,13 @@
       <button class="secondary-btn" id="sendToUpscaleBtn" hidden data-i18n="convert.sendToUpscale">✨ 이 이미지 업스케일링 하기 →</button>
       <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
     </div>
+
+    <div class="result" id="bulkResult">
+      <p class="hint" id="bulkSummary" style="text-align:left;margin:0 0 4px;"></p>
+      <div class="icon-grid" id="bulkGrid"></div>
+      <a class="primary-btn download-btn" id="bulkZipBtn" download data-i18n="pdf.downloadZipBtn">ZIP으로 전체 다운로드</a>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+    </div>
   </div>
 </section>
 
@@ -84,6 +96,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="i18n-data.js"></script>
 <script src="i18n.js"></script>
 <script src="theme.js"></script>
