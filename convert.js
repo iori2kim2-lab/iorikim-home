@@ -10,6 +10,9 @@
   var qualityValue = document.getElementById("qualityValue");
   var convertBtn = document.getElementById("convertBtn");
 
+  var beforeFigure = document.getElementById("beforeFigure");
+  var afterFigure = document.getElementById("afterFigure");
+  var statsRow = document.getElementById("statsRow");
   var beforeImg = document.getElementById("beforeImg");
   var afterImg = document.getElementById("afterImg");
   var beforeSize = document.getElementById("beforeSize");
@@ -154,7 +157,10 @@
         img.naturalWidth + " × " + img.naturalHeight + "px · " + detectFormatLabel(file);
 
       controls.style.display = "grid";
-      result.classList.remove("visible");
+      afterFigure.hidden = true;
+      statsRow.hidden = true;
+      downloadBtn.hidden = true;
+      result.classList.add("visible");
       updateQualityVisibility();
     } catch (err) {
       console.error(err);
@@ -216,8 +222,10 @@
         downloadBtn.href = url;
         downloadBtn.download = baseName + "." + ext;
 
-        result.classList.add("visible");
-        result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        afterFigure.hidden = false;
+        statsRow.hidden = false;
+        downloadBtn.hidden = false;
+        afterFigure.scrollIntoView({ behavior: "smooth", block: "nearest" });
       },
       outMime,
       quality

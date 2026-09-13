@@ -8,6 +8,8 @@
   var resizeNote = document.getElementById("resizeNote");
   var upscaleBtn = document.getElementById("upscaleBtn");
 
+  var beforeFigure = document.getElementById("beforeFigure");
+  var afterFigure = document.getElementById("afterFigure");
   var beforeImg = document.getElementById("beforeImg");
   var afterImg = document.getElementById("afterImg");
   var beforeSize = document.getElementById("beforeSize");
@@ -83,7 +85,9 @@
         }
 
         controls.style.display = "grid";
-        result.classList.remove("visible");
+        afterFigure.hidden = true;
+        downloadBtn.hidden = true;
+        result.classList.add("visible");
       };
       img.src = e.target.result;
     };
@@ -133,8 +137,9 @@
       downloadBtn.href = url;
       downloadBtn.download = baseName + "-upscaled-2x.png";
 
-      result.classList.add("visible");
-      result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      afterFigure.hidden = false;
+      downloadBtn.hidden = false;
+      afterFigure.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (err) {
       console.error(err);
       alert(t("upscale.upscaleFailAlert"));
