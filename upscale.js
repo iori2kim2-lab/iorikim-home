@@ -151,34 +151,15 @@
 
   // pick up an image handed off from another tool (e.g. the converter's
   // "upscale this image" button), if one is waiting
-  (function checkHandoff() {
-    var raw;
-    try {
-      raw = sessionStorage.getItem("iorikim-handoff");
-    } catch (err) {
-      return;
-    }
-    if (!raw) return;
-    sessionStorage.removeItem("iorikim-handoff");
-
-    var data;
-    try {
-      data = JSON.parse(raw);
-    } catch (err) {
-      return;
-    }
-    if (!data || !data.dataUrl) return;
-
-    fetch(data.dataUrl)
-      .then(function (r) {
-        return r.blob();
-      })
-      .then(function (blob) {
-        var file = new File([blob], data.name || "image.png", { type: blob.type });
+  if (window.IorikimHandoff) {
+    IorikimHandoff.load()
+      .then(function (data) {
+        if (!data || !data.blob) return;
+        var file = new File([data.blob], data.name || "image.png", { type: data.blob.type });
         handleFile(file);
       })
       .catch(function (err) {
         console.error(err);
       });
-  })();
+  }
 })();

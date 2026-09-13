@@ -398,23 +398,13 @@
 
   sendToUpscaleBtn.addEventListener("click", function () {
     if (!lastConvertedBlob) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      try {
-        sessionStorage.setItem(
-          "iorikim-handoff",
-          JSON.stringify({ dataUrl: reader.result, name: lastConvertedName })
-        );
-      } catch (err) {
+    IorikimHandoff.save(lastConvertedBlob, lastConvertedName)
+      .then(function () {
+        window.location.href = "upscale.html";
+      })
+      .catch(function (err) {
         console.error(err);
         alert(t("convert.sendToUpscaleFailAlert"));
-      }
-      window.location.href = "upscale.html";
-    };
-    reader.onerror = function () {
-      alert(t("convert.sendToUpscaleFailAlert"));
-      window.location.href = "upscale.html";
-    };
-    reader.readAsDataURL(lastConvertedBlob);
+      });
   });
 })();
