@@ -1,0 +1,4345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>강아지&amp;고양이 플라이 — iorikim</title>
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: radial-gradient(120% 80% at 50% 0%, #9fd8ff 0%, #4a7fb5 45%, #1b3c63 100%);
+    font-family: "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: #dceaf7;
+    -webkit-user-select: none; user-select: none;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    background: #bfe9ff;
+    border-radius: 20px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.42), 0 0 0 5px rgba(255,255,255,.55);
+    max-height: 92vh; max-width: 96vw; width: auto; height: auto;
+    touch-action: none; cursor: none;
+  }
+  .tip { margin: 0; font-size: 12.5px; color: #cfe4f5; letter-spacing: .02em; }
+  .tip b { color: #ffd76a; }
+</style>
+</head>
+<body>
+  <a href="../index.html" style="position:fixed;top:12px;left:12px;z-index:9999;background:rgba(15,14,23,.55);color:#fff;font:700 13px/1 'Apple SD Gothic Neo',sans-serif;padding:9px 14px;border-radius:999px;text-decoration:none;backdrop-filter:blur(6px);">← 홈으로</a>
+  <canvas id="game" width="450" height="800"></canvas>
+  <p class="tip"><b>드래그 · ← → · A D</b> 좌우 이동 · 미사일은 <b>자동 발사</b> · <b>Space</b> 필살기 · <b>U</b> 강화(테스트) · <b>P</b> 일시정지 · <b>M</b> 음악</p>
+
+<script>
+"use strict";
+/* =========================================================================
+ * 펫 플라이트 (Pet Flight) — 9:16 세로형 종스크롤 슈팅
+ * 단일 파일 / 외부 이미지·사운드 0개 / 모든 그래픽과 소리는 코드로 생성
+ * -------------------------------------------------------------------------
+ * [1단계] 450x800 세로 캔버스 · 무한 스크롤 구름 하늘 · 캐릭터 선택 UI
+ * [2단계] 고양이(유도 발바닥) / 강아지(직사 뼈다귀) 차별화
+ * [3단계] Web Audio 8비트 BGM + 캐릭터별 발사음 + 폭발음
+ * [4단계] 라인 편대 스폰 · 무한 스테이지 난이도 곡선 · 엘리트 몬스터
+ * [5단계] 파티클 · 아이템(골드/자석/실드) · HUD · localStorage 최고기록
+ * ========================================================================= */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const CW = 450, CH = 800;                    // 정확히 9 : 16
+
+/* ── 밸런스 상수 ───────────────────────────────────────────────────────── */
+const PLAYER_Y     = CH - 132;               // 플레이어는 하단 고정, 좌우로만 이동
+const PLAYER_R     = 24;
+const MOVE_SPEED   = 430;                    // 키보드 이동 속도(px/초)
+const FIRE_RATE    = 0.15;                   // 자동 발사 간격(초)
+const LANES        = 6;                      // 적이 내려오는 라인 수
+const LANE_W       = CW / LANES;
+const ENEMY_R      = 22;                     // 일반 몬스터 반지름
+const ELITE_SCALE  = 3;                      // 엘리트는 3배 크기
+const MAGNET_TIME  = 6.0;
+/* 실드는 원래 "쓸 때까지 영구"였다 → 한 번 얻으면 끝까지 남아 긴장이 사라졌다.
+ * 이제 20초 제한을 두고, 마지막 4초는 점점 빠르게 깜빡이며 사라질 걸 알린다.
+ * (겹쳐 먹으면 개수가 늘고 시간도 새로 채워진다) */
+/* 만렙 이후의 강화 아이템 — 더 올릴 게 없으면 잠깐 화력을 폭발시킨다.
+ * (아이템이 아예 안 나오면 후반에 화면이 심심해진다) */
+const RAPID_TIME   = 5.0;                    // 연사 강화 지속 시간(초)
+const RAPID_MUL    = 1.5;                    // 기본탄·드론 발사 속도 배수
+const SHIELD_TIME  = 20.0;                   // 실드 지속 시간(초)
+const SHIELD_WARN  = 4.0;                    // 남은 시간이 이보다 적으면 깜빡인다
+const MAX_WLV      = 5;                      // 무기 최대 강화 단계
+
+/* ── 보조 드론 ─────────────────────────────────────────────────────────
+ * 만렙(LV5) 이후의 강화 아이템은 드론으로 전환된다. 본체 탄을 더 늘리면
+ * 화면이 어지러우므로, 드론은 "발사 간격이 긴 다른 종류의 탄"을 쏜다.
+ *   1단계 방사형   : 부채꼴 3발, 약하지만 넓게
+ *   2단계 집중형   : 드론 2기, 빠르고 굵은 직사탄
+ *   3단계 미사일형 : 유도 미사일 + 착탄 시 범위 폭발 */
+/* 드론은 "형태 3종 × 랭크 3단계 = 9단계"로 성장한다.
+ * 랭크업 방향을 형태마다 다르게 둬서, 무작정 탄만 늘어나 화면이
+ * 지저분해지는 걸 막는다.
+ *   방사형  → 탄 수가 늘고 부채꼴이 넓어진다   (3 → 4 → 5발)
+ *   집중형  → 연사와 위력이 오르고 마지막에 2줄 (0.28 → 0.18초)
+ *   미사일형→ 폭발 반경과 위력, 마지막에 2발    (66 → 96px) */
+const DRONE_FORMS = [
+  { name: "방사형", ranks: [
+      { shots: 3, rate: 0.42, dmg: 1, arc: 0.34 },
+      { shots: 4, rate: 0.36, dmg: 1, arc: 0.40 },
+      { shots: 5, rate: 0.30, dmg: 1, arc: 0.46 } ] },
+  { name: "집중형", ranks: [
+      { shots: 1, rate: 0.28, dmg: 3 },
+      { shots: 1, rate: 0.20, dmg: 4 },
+      { shots: 2, rate: 0.18, dmg: 4 } ] },
+  { name: "미사일형", ranks: [
+      { shots: 1, rate: 0.80, dmg: 4, blast: 66 },
+      { shots: 1, rate: 0.72, dmg: 5, blast: 80 },
+      { shots: 2, rate: 0.70, dmg: 6, blast: 96 } ] },
+  /* 폭풍형(최종) → 미사일과 전기를 "동시에" 쏜다.
+   *   미사일 : 미사일형과 같은 유도 + 범위 폭발 (shots/rate/dmg/blast)
+   *   전기   : 별도 타이머(srate)로 도는 즉발 체인 라이트닝.
+   *            reach 안의 첫 표적을 때린 뒤 range 안의 다음 적으로 chain번 튀며
+   *            튈 때마다 20%씩 약해진다. (sdmg = 전기 위력) */
+  { name: "폭풍형", ranks: [
+      { shots: 1, rate: 0.78, dmg: 5, blast: 82,
+        chain: 2, reach: 420, range: 160, sdmg: 2, srate: 0.70 },
+      { shots: 2, rate: 0.74, dmg: 6, blast: 94,
+        chain: 3, reach: 450, range: 185, sdmg: 3, srate: 0.62 },
+      { shots: 2, rate: 0.70, dmg: 7, blast: 106,
+        chain: 4, reach: 480, range: 210, sdmg: 4, srate: 0.55 } ] }
+];
+const MAX_DSTEP = 12;                        // 4형태 x 3랭크
+const DRONE_COLORS = ["#a7f0c6", "#6ff0ff", "#ffb03a", "#f0ff5a"];   // 형태별 상징색
+const droneForm = () => Math.min(3, Math.floor((Game.player.dstep - 1) / 3));
+const droneRank = () => ((Game.player.dstep - 1) % 3) + 1;
+function droneSpec() {
+  const p = Game.player;
+  if (!p || p.dstep <= 0) return null;
+  const f = DRONE_FORMS[droneForm()];
+  return Object.assign({ form: droneForm(), rank: droneRank(), name: f.name }, f.ranks[droneRank() - 1]);
+}
+
+/* ── 필살기 (펫 오라) ──────────────────────────────────────────────────
+ * 게이지가 가득 차면 발동 가능. 자동이 아니라 "직접 터뜨리는" 기술이라
+ * 위험한 순간까지 아껴 두는 판단이 생긴다. 발동 중에는 무적. */
+const ULT_NEED     = 1;
+const ULT_KILL     = 0.006;                  // 적 처치당 충전량 (약 167마리 — 기존의 1/3)
+const ULT_GOLD     = 0.002;                  // 골드 획득당 충전량
+const ULT_TIME     = 1.15;                   // 충격파가 화면을 훑는 시간
+const ULT_ELITE_DMG= 0.45;                   // 엘리트에게 주는 최대체력 비율
+const ULT_BTN      = { cx: 54, cy: CH - 54, r: 34 };
+
+/* ── 피버타임 ──────────────────────────────────────────────────────────
+ * 필살기(수동·순간 폭발)와 역할이 겹치지 않도록 충전원을 나눴다.
+ *   필살기 = 적 처치     → 직접 터뜨리는 한 방
+ *   피버   = 골드 수집   → 가득 차면 자동 발동, 3.5초간 초대형 레이저
+ * 덕분에 자석·골드를 챙길 이유가 생기고, 두 게이지가 따로 논다. */
+const FEVER_GOLD   = 0.011;                  // 골드 1개당 (약 90개면 만충 — 기존의 2배 시간)
+const FEVER_KILL   = 0.0015;                 // 처치로도 아주 조금은 찬다 (역시 절반)
+const FEVER_TIME   = 3.5;                    // 피버 지속 시간
+/* 피버는 레이저가 아니라 "거대한 마스코트 탄"이 화면을 훑고 지나간다.
+ *   고양이 → 커다란 하트가 두근거리며 위로 날아간다
+ *   강아지 → 커다란 뼈다귀가 빙글빙글 돌며 위로 날아간다
+ * 둘 다 적을 관통하며, 닿은 일반 적은 그 자리에서 소멸한다. */
+const FEVER_R      = 104;                    // 관통탄 판정 반지름
+const FEVER_GAP    = 0.72;                   // 발사 간격 (지속시간 동안 약 5발)
+const FEVER_VY     = -600;                   // 위로 나아가는 속도
+const FEVER_ELITE  = 3.0;                    // 엘리트 초당 피해(최대체력 비율)
+const FEVER_BOSS   = 0.25;                   // 보스 초당 피해(최대체력 비율)
+
+/* ── 페이스 리듬 ───────────────────────────────────────────────────────
+ * 같은 간격의 스트림은 아무리 빨라져도 지루하다. 4번의 일반 편성 뒤에
+ * "러시(3연속 속사)"를 넣고, 러시가 끝나면 짧은 소강을 준다.
+ * 조용해졌다가 몰아치는 대비가 긴장을 만든다. */
+const RUSH_EVERY   = 4;
+const RUSH_WAVES   = 3;
+const RUSH_GAP     = 0.34;
+const CALM_EXTRA   = 1.25;
+
+/* ── 보스전 ────────────────────────────────────────────────────────────
+ * 5스테이지마다 등장. "다음 보스까지 2스테이지" 라는 기대가 중반을 끌고 간다. */
+const BOSS_EVERY   = 5;
+const BOSS_TIMEOUT = 45;
+/* 보스 급강하 — 예전엔 플레이어보다 130px 위에서 멈춰 "공격 같지가 않았다".
+ * 이제는 플레이어 높이까지 그대로 내리꽂고, 대신 예고 시간을 넉넉히 주고
+ * 바닥에 낙하 지점을 미리 그려 준다(피할 수 있으면 공격은 세도 된다). */
+const BOSS_WARN    = 1.15;                   // 예고 시간(초)
+const BOSS_DIVE_Y  = PLAYER_Y - 8;           // 급강하가 멈추는 높이 = 플레이어 높이
+const SCROLL_SPEED = 90;                     // 비행 거리 증가 속도(m/s)
+const STAGE_DIST   = 600;                    // 이만큼 날아가면 다음 스테이지
+const BEST_KEY     = "petflight_best_v1";
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand  = (a, b) => a + Math.random() * (b - a);
+const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
+
+function rrect(g, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y,     x + w, y + h, r);
+  g.arcTo(x + w, y + h, x,     y + h, r);
+  g.arcTo(x,     y + h, x,     y,     r);
+  g.arcTo(x,     y,     x + w, y,     r);
+  g.closePath();
+}
+const FONT = "'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif";
+function text(str, x, y, size, color, align, weight) {
+  ctx.font = (weight || 800) + " " + size + "px " + FONT;
+  ctx.fillStyle = color;
+  ctx.textAlign = align || "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(str, x, y);
+}
+
+/* ── 펫 정의 ───────────────────────────────────────────────────────────── */
+const PETS = {
+  cat: {
+    key: "cat", name: "고양이", tag: "연사 발바닥",
+    desc: ["곧게 뻗는 발바닥을", "촘촘하게 퍼붓는", "빠른 연사형"],
+    body: "#ffd7e6", body2: "#ffb0cf", line: "#e4749b",
+    /* [밸런스] 유도를 걷어내고 둘 다 직사로 통일했다.
+     *  고양이 = 연사가 15% 빠르지만 탄속이 느린 쪽,
+     *  강아지 = 연사는 보통이지만 탄이 훨씬 빨라 먼 적을 먼저 때리는 쪽. */
+    shot: { dmg: 2, speed: 620, homing: 0, count: 1, rateMul: 0.85 },
+    particle: "heart", pcolor: ["#ff9ec4", "#ffd1e3", "#ff6f9c", "#fff0f6"]
+  },
+  dog: {
+    key: "dog", name: "강아지", tag: "직사 뼈다귀",
+    desc: ["앞으로 곧게 뻗는", "빠르고 강력한", "노란 뼈다귀 미사일"],
+    body: "#ffe3ac", body2: "#f7c46a", line: "#c98f2c",
+    shot: { dmg: 2, speed: 720, homing: 0, count: 1, rateMul: 1.0 },
+    particle: "star", pcolor: ["#ffd76a", "#fff0c2", "#ffb03a", "#ffffff"]
+  }
+};
+
+/* ── 게임 상태 ─────────────────────────────────────────────────────────── */
+const Game = {
+  state: "title",           // title | select | playing | paused | over
+  titleT: 0,                // 타이틀 연출 경과 시간
+  pet: PETS.cat,
+  player: null,
+  bullets: [], enemies: [], drops: [], parts: [], pops: [], formations: [], bolts: [],
+  upFx: null,               // 머리 위 "업그레이드!" 연출
+  feverShots: [], feverShotT: 0,   // 피버 관통탄
+  score: 0, gold: 0, stage: 1, distance: 0,
+  ult: 0, ultT: 0, ultR: 0,
+  fever: 0, feverT: 0, feverBanner: 0,
+  waveCount: 0, rushLeft: 0, rushBanner: 0,
+  boss: null, lastBossStage: 0, bossT: 0, stageBanner: 0, lastStage: 1,
+  tierBanner: 0, tierShown: 0,          // 적 세대 교체 연출
+  spawnT: 0, fireT: 0, timer: 0, shake: 0, overT: 0,
+  best: { score: 0, gold: 0, stage: 1 },
+  newRecord: false
+};
+
+try {
+  const raw = localStorage.getItem(BEST_KEY);
+  if (raw) Game.best = JSON.parse(raw);
+} catch (e) { /* 로컬스토리지를 못 쓰는 환경이면 기본값 */ }
+
+/* ── 입력: 드래그 / 키보드 ───────────────────────────────────────────────
+ * 좌우 이동은 방향키와 A·D를 같은 자격으로 받는다. 이 목록에 있는 키를
+ * 누르면 진행 중이던 드래그 조작을 놓아 준다(둘이 서로 잡아당기지 않도록). */
+const MOVE_KEYS = ["ArrowLeft", "ArrowRight", "KeyA", "KeyD"];
+const keys = Object.create(null);
+const pressed = Object.create(null);
+let pointerX = null, pointerDown = false;
+
+addEventListener("keydown", e => {
+  if (["ArrowLeft", "ArrowRight", "Space"].indexOf(e.code) >= 0) e.preventDefault();
+  if (!keys[e.code]) pressed[e.code] = true;
+  keys[e.code] = true;
+  if (MOVE_KEYS.indexOf(e.code) >= 0) pointerX = null;      // 이동키를 쓰면 드래그 해제
+});
+addEventListener("keyup", e => { keys[e.code] = false; });
+addEventListener("blur", () => { for (const k in keys) keys[k] = false; pointerDown = false; });
+
+function canvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (CW / r.width),
+           y: (e.clientY - r.top) * (CH / r.height) };
+}
+canvas.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  const p = canvasPos(e);
+  // 필살기 버튼을 눌렀을 때는 이동 입력으로 잡지 않는다
+  if (Game.state === "playing" &&
+      (p.x - ULT_BTN.cx) * (p.x - ULT_BTN.cx) + (p.y - ULT_BTN.cy) * (p.y - ULT_BTN.cy)
+        < (ULT_BTN.r + 10) * (ULT_BTN.r + 10)) {
+    fireUlt();
+    return;
+  }
+  pointerDown = true; pointerX = p.x;
+  handleTap(p.x, p.y);
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!pointerDown) return;
+  pointerX = canvasPos(e).x;
+});
+const endPointer = () => { pointerDown = false; };
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+
+/* =========================================================================
+ * [3단계] 오디오 — 외부 파일 없이 Web Audio API로 전부 합성
+ * ========================================================================= */
+const Sound = {
+  ctx: null, master: null, music: null, sfx: null,
+  on: true, started: false, timer: null,
+  bpm: 148, step: 0, nextTime: 0, lookahead: 0.12,
+
+  /* 경쾌한 비행 BGM — Am - F - C - G, 8비트 리드 + 베이스 + 드럼 */
+  melody: [
+    [69, null, 76, null, 74, 72, 74, null, 76, null, 72, null, 69, null, null, null],
+    [65, null, 72, null, 71, 69, 71, null, 72, null, 69, null, 65, null, null, null],
+    [72, null, 79, null, 77, 76, 77, null, 79, null, 76, null, 72, null, null, null],
+    [67, null, 74, null, 79, 78, 79, null, 83, null, 79, null, 74, null, null, null]
+  ],
+  bassRoot: [45, 41, 48, 43],
+  bassPat: [0, null, 12, null, 7, null, 12, null, 0, null, 12, null, 7, null, 7, null],
+  chords: [[57, 60, 64], [53, 57, 60], [60, 64, 67], [55, 59, 62]],
+
+  ensure() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.master = this.ctx.createGain(); this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
+      this.music = this.ctx.createGain(); this.music.gain.value = 0.15;
+      this.music.connect(this.master);
+      this.sfx = this.ctx.createGain(); this.sfx.gain.value = 0.5;
+      this.sfx.connect(this.master);
+      const len = Math.floor(this.ctx.sampleRate * 0.35);
+      this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    return this.ctx;
+  },
+
+  tone(t, f0, f1, dur, type, vol, dest) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur * 0.9);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(dest || this.sfx);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+
+  noiseBurst(t, freq, dur, vol, type) {
+    const c = this.ctx, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = this.noise;
+    f.type = type || "bandpass"; f.frequency.value = freq; f.Q.value = 1.1;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.sfx);
+    s.start(t); s.stop(t + dur + 0.02);
+  },
+
+  /* ── 효과음 ─────────────────────────────────────────────────────────
+   * catShot : 가볍고 청량한 고음 플럭   dogShot : 묵직하고 통통 튀는 저음
+   * pop     : 적 처치 '팡!'             coin/shield/magnet/hit/over      */
+  play(name) {
+    if (!this.on) return;
+    try {
+      const c = this.ensure(), t = c.currentTime;
+      if (name === "catShot") {
+        this.tone(t, 1250, 1900, 0.07, "triangle", 0.16);
+        this.tone(t + 0.01, 2400, 3000, 0.04, "sine", 0.07);
+      } else if (name === "dogShot") {
+        this.tone(t, 420, 190, 0.10, "square", 0.20);
+        this.noiseBurst(t, 900, 0.06, 0.10);
+      } else if (name === "pop") {
+        this.tone(t, 780, 180, 0.14, "square", 0.20);
+        this.noiseBurst(t, 2400, 0.14, 0.26, "highpass");
+      } else if (name === "bigpop") {
+        this.tone(t, 300, 60, 0.34, "sawtooth", 0.28);
+        this.noiseBurst(t, 700, 0.34, 0.34, "lowpass");
+        this.noiseBurst(t + 0.02, 2600, 0.2, 0.2, "highpass");
+      } else if (name === "coin") {
+        this.tone(t, 1046, 0, 0.07, "square", 0.16);
+        this.tone(t + 0.05, 1568, 0, 0.11, "square", 0.14);
+      } else if (name === "power") {
+        [784, 988, 1319, 1568].forEach((f, i) => this.tone(t + i * 0.06, f, 0, 0.16, "square", 0.18));
+      } else if (name === "hit") {
+        this.tone(t, 220, 70, 0.45, "sawtooth", 0.3);
+        this.noiseBurst(t, 500, 0.4, 0.3, "lowpass");
+      } else if (name === "over") {
+        [523, 415, 349, 262].forEach((f, i) => this.tone(t + i * 0.17, f, 0, 0.42, "triangle", 0.24));
+      } else if (name === "ult") {
+        this.tone(t, 180, 1400, 0.35, "sawtooth", 0.18);           // 차오르는 라이저
+        this.noiseBurst(t + 0.05, 1200, 0.3, 0.18, "highpass");
+        const h = t + 0.34;
+        this.tone(h, 220, 45, 0.6, "sine", 0.42);                  // 묵직한 임팩트
+        this.noiseBurst(h, 600, 0.55, 0.36, "lowpass");
+        this.noiseBurst(h, 3000, 0.4, 0.24, "highpass");
+        [523, 659, 784, 1046, 1318].forEach((f, i) =>
+          this.tone(h + 0.08 + i * 0.05, f, 0, 0.3, "square", 0.14));
+      } else if (name === "fever") {
+        this.tone(t, 140, 1600, 0.4, "sawtooth", 0.2);              // 차오르는 라이저
+        this.noiseBurst(t + 0.06, 1400, 0.36, 0.2, "highpass");
+        const h = t + 0.4;
+        this.tone(h, 90, 50, 1.6, "sawtooth", 0.22);                // 레이저 저음 지속
+        this.tone(h, 1200, 900, 1.6, "square", 0.06);
+        this.noiseBurst(h, 800, 1.2, 0.22, "lowpass");
+        [523, 784, 1046, 1568].forEach((f, i) =>
+          this.tone(h + 0.1 + i * 0.06, f, 0, 0.34, "square", 0.16));
+      } else if (name === "drone") {
+        this.tone(t, 900, 1500, 0.06, "sine", 0.10);
+      } else if (name === "missile") {
+        this.tone(t, 300, 700, 0.14, "sawtooth", 0.12);
+        this.noiseBurst(t, 1400, 0.1, 0.08, "highpass");
+      } else if (name === "warn") {                       // 급강하 예고 알림
+        [880, 880].forEach((f, i) => this.tone(t + i * 0.16, f, f * 0.7, 0.12, "square", 0.13));
+      } else if (name === "whoosh") {                     // 피버 관통탄 사출
+        this.tone(t, 220, 900, 0.30, "sine", 0.16);
+        this.tone(t + 0.02, 440, 1400, 0.22, "triangle", 0.10);
+        this.noiseBurst(t, 900, 0.26, 0.10, "lowpass");
+      } else if (name === "zap") {                        // 지지직 — 고역 노이즈 + 급강하 톱니파
+        this.noiseBurst(t, 2600, 0.12, 0.12, "highpass");
+        this.tone(t, 1800, 240, 0.09, "sawtooth", 0.09);
+        this.tone(t + 0.03, 2600, 500, 0.07, "square", 0.05);
+      } else if (name === "rush") {
+        [660, 880].forEach((f, i) => this.tone(t + i * 0.08, f, f * 1.6, 0.14, "square", 0.18));
+      } else if (name === "stage") {
+        [784, 1046].forEach((f, i) => this.tone(t + i * 0.07, f, 0, 0.2, "triangle", 0.16));
+      } else if (name === "boss") {
+        this.tone(t, 120, 60, 0.9, "sawtooth", 0.3);
+        this.noiseBurst(t, 400, 0.8, 0.3, "lowpass");
+        [196, 233, 262].forEach((f, i) => this.tone(t + 0.2 + i * 0.14, f, 0, 0.4, "square", 0.2));
+      } else if (name === "start") {
+        [659, 880, 1319].forEach((f, i) => this.tone(t + i * 0.07, f, 0, 0.18, "square", 0.2));
+      }
+    } catch (e) { /* 오디오 불가 환경은 조용히 무시 */ }
+  },
+
+  /* ── BGM: 오디오 클럭에 선행 예약해 프레임과 무관하게 정확히 루프 ── */
+  startBgm() {
+    if (this.started || !this.on) return;
+    try {
+      this.ensure();
+      this.started = true;
+      this.nextTime = this.ctx.currentTime + 0.08;
+      this.timer = setInterval(() => this.schedule(), 25);
+    } catch (e) { this.started = false; }
+  },
+  stopBgm() { if (!this.started) return; clearInterval(this.timer); this.timer = null; this.started = false; },
+  toggle() {
+    this.on = !this.on;
+    if (!this.on) this.stopBgm();
+    else if (Game.state === "playing") this.startBgm();
+  },
+  sync(state) {
+    if (state === "playing" && this.on) this.startBgm();
+    else if (state !== "playing") this.stopBgm();
+  },
+
+  schedule() {
+    if (!this.ctx) return;
+    const stepDur = 60 / this.bpm / 4;
+    while (this.nextTime < this.ctx.currentTime + this.lookahead) {
+      this.playStep(this.step, this.nextTime, stepDur);
+      this.nextTime += stepDur;
+      this.step = (this.step + 1) % 64;
+    }
+  },
+
+  playStep(i, t, dur) {
+    const bar = i >> 4, s = i & 15;
+    const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+
+    const n = this.melody[bar][s];
+    if (n !== null) this.tone(t, midi(n), 0, dur * 1.7, "square", 0.17, this.music);
+
+    const off = this.bassPat[s];
+    if (off !== null) this.tone(t, midi(this.bassRoot[bar] + off), 0, dur * 1.5, "triangle", 0.28, this.music);
+
+    if (s % 4 === 2) {                                  // 아르페지오
+      const ch = this.chords[bar];
+      this.tone(t, midi(ch[(i >> 1) % 3] + 12), 0, dur * 0.8, "square", 0.05, this.music);
+    }
+    if (s % 8 === 0) {                                  // 킥
+      const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(160, t);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.1);
+      g.gain.setValueAtTime(0.4, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      o.connect(g); g.connect(this.music); o.start(t); o.stop(t + 0.17);
+    }
+    if (s % 8 === 4) {                                  // 스네어
+      const c = this.ctx, sr = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      sr.buffer = this.noise;
+      f.type = "highpass"; f.frequency.value = 1500;
+      g.gain.setValueAtTime(0.15, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+      sr.connect(f); f.connect(g); g.connect(this.music); sr.start(t); sr.stop(t + 0.12);
+    }
+    if (s % 2 === 0) {                                  // 하이햇
+      const c = this.ctx, sr = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      sr.buffer = this.noise;
+      f.type = "highpass"; f.frequency.value = 8500;
+      g.gain.setValueAtTime(s % 4 === 0 ? 0.05 : 0.03, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+      sr.connect(f); f.connect(g); g.connect(this.music); sr.start(t); sr.stop(t + 0.05);
+    }
+  }
+};
+
+/* =========================================================================
+ * [4단계] 게임 로직 — 스폰 · 난이도 곡선 · 충돌 · 아이템
+ * ========================================================================= */
+
+/* 카드 UI 좌표(선택 화면 · 탭 판정 공용) */
+const CARD_W = 178, CARD_H = 252, CARD_Y = 286;
+const CARDS = {
+  cat: { x: 26, y: CARD_Y, w: CARD_W, h: CARD_H },
+  dog: { x: CW - 26 - CARD_W, y: CARD_Y, w: CARD_W, h: CARD_H }
+};
+const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+function startGame(petKey) {
+  Game.pet = PETS[petKey];
+  Game.player = { x: CW / 2, y: PLAYER_Y, r: PLAYER_R, shield: 0, shieldT: 0, magnet: 0, rapidT: 0,
+                  tilt: 0, flap: 0, inv: 0, wlv: 1, dstep: 0, droneT: 0, sparkT: 0 };
+  Game.bullets = []; Game.enemies = []; Game.drops = []; Game.formations = [];
+  Game.parts = []; Game.pops = []; Game.bolts = []; Game.upFx = null;
+  Game.feverShots = []; Game.feverShotT = 0;
+  Game.score = 0; Game.gold = 0; Game.stage = 1; Game.distance = 0;
+  Game.ult = 0; Game.ultT = 0; Game.ultR = 0;
+  Game.fever = 0; Game.feverT = 0; Game.feverBanner = 0;
+  Game.waveCount = 0; Game.rushLeft = 0; Game.rushBanner = 0;
+  Game.boss = null; Game.lastBossStage = 0; Game.bossT = 0;
+  Game.weaponBlock = -1;                    // 강화 아이템을 내보낸 구간(2스테이지 단위)
+  Game.shieldNextStage = 1;                 // 실드가 다시 나올 수 있는 스테이지
+  Game.stageBanner = 0; Game.lastStage = 1;
+  Game.tierBanner = 0; Game.tierShown = 0;
+  Sound.bpm = 148;
+  Game.spawnT = 0.5; Game.fireT = 0; Game.shake = 0; Game.overT = 0;
+  Game.newRecord = false;
+  Game.state = "playing";
+  pointerX = null;
+  Sound.play("start");
+}
+
+/* ── 개발용 단축키 : 화면 오른쪽 아래 구석을 3번 연속 터치 ──────────────
+ * 강화를 전부 만렙으로 올리고 90스테이지(우주 · 외계 침공군)로 건너뛴다.
+ * 후반 콘텐츠를 매번 90판까지 플레이해서 확인할 수는 없기 때문. */
+const DEV_CORNER = { w: 80, h: 80 };         // 오른쪽 아래 구석 판정 영역
+const DEV_TAPS   = 3;                        // 몇 번 눌러야 발동하는가
+const DEV_WINDOW = 1.4;                      // 연속으로 인정하는 시간(초)
+
+function devCornerTap(x, y) {
+  if (Game.state !== "playing") return false;
+  if (x < CW - DEV_CORNER.w || y < CH - DEV_CORNER.h) return false;
+
+  if (Game.timer - (Game.devTapT || -9) > DEV_WINDOW) Game.devTaps = 0;
+  Game.devTaps = (Game.devTaps || 0) + 1;
+  Game.devTapT = Game.timer;
+  if (Game.devTaps < DEV_TAPS) {
+    pop(Game.devTaps + " / " + DEV_TAPS, CW - 44, CH - 96, "#ffd76a");
+    return true;
+  }
+
+  /* 발동 — 만렙 + 90스테이지 */
+  Game.devTaps = 0;
+  const p = Game.player;
+  p.wlv = MAX_WLV; p.dstep = MAX_DSTEP;
+  p.shield = 2; p.shieldT = SHIELD_TIME;
+  Game.stage = TIER_STAGE[3];
+  Game.distance = (TIER_STAGE[3] - 1) * STAGE_DIST + 10;
+  Game.lastStage = Game.stage;
+  Game.lastBossStage = Game.stage;             // 진입하자마자 보스가 뜨지 않게
+  Game.tierShown = enemyTier(Game.stage);
+  Game.weaponBlock = -1;
+  Game.enemies.length = 0; Game.bullets.length = 0; Game.bolts.length = 0;
+  Game.boss = null;
+  skyMix = 1; skyTo = skyIndex(Game.stage); skyFrom = skyTo;   // 배경도 즉시 우주로
+  Game.stageBanner = 1.8; Game.tierBanner = 2.4;
+  Game.flash = 0.8; Game.shake = 12;
+  Sound.play("bigpop");
+  pop("DEV : MAX + STAGE " + Game.stage, CW / 2, CH * 0.4, "#7ef0ff");
+  return true;
+}
+
+function handleTap(x, y) {
+  if (devCornerTap(x, y)) return;
+  if (Game.state === "title") {
+    if (Game.titleT > 0.6) { Game.state = "select"; Sound.play("stage"); }
+  } else if (Game.state === "select") {
+    if (inRect(x, y, CARDS.cat)) startGame("cat");
+    else if (inRect(x, y, CARDS.dog)) startGame("dog");
+  } else if (Game.state === "over" && Game.overT <= 0) {
+    Game.state = "select";
+  } else if (Game.state === "paused") {
+    Game.state = "playing";
+  }
+}
+
+/* ── 난이도 곡선 ───────────────────────────────────────────────────────
+ * 스테이지가 오를수록 HP는 계단식으로, 속도는 완만한 곡선으로 오르고
+ * 스폰 간격은 하한선까지 서서히 좁아진다. 무한히 이어지되 발산하지 않는다. */
+function enemyHp()    { return 1 + Math.floor(Game.stage * 0.75); }
+function enemySpeed() { return Math.min(250, 78 + Game.stage * 6.5); }
+function spawnGap()   { return Math.max(0.62, 1.55 - Game.stage * 0.045); }
+
+/* 적의 색 변형 — 같은 종류라도 지루하지 않게 */
+const BIRD_SKINS = [
+  { body: "#a9d9ff", body2: "#6bb4f5", wing: "#4a90d9", beak: "#ffb03a" },
+  { body: "#ffc6dc", body2: "#ff92bd", wing: "#e26d9c", beak: "#ffa73a" },
+  { body: "#d3c4ff", body2: "#ab90f5", wing: "#8a6fe0", beak: "#ffbf4a" }
+];
+
+/* ── 적 세대(TIER) ─────────────────────────────────────────────────────────
+ * 스테이지가 깊어지면 적의 "종족"이 통째로 교체된다.
+ *   TIER 0 (1~29)  : 말랑한 하늘 친구들 — 둥글고 귀엽다
+ *   TIER 1 (30~59) : 분노한 야수 군단 — 각진 실루엣, 뿔·가시·송곳니, 찢어진 눈
+ *   TIER 2 (60~89) : 보이드 결정체   — 유기체가 아닌 기하학 에너지 병기
+ *   TIER 3 (90~)   : 외계 침공군     — 배경이 우주가 되는 구간, 전부 외계인
+ * 행동과 밸런스(HP/속도/스폰)는 그대로 두고 "겉모습만" 바꾸므로
+ * 난이도 곡선은 유지한 채 후반부의 시각적 지루함만 걷어낸다. */
+const TIER_STAGE = [1, 30, 60, 90];
+const TIER_NAME  = ["하늘 친구들", "분노한 야수 군단", "보이드 결정체", "외계 침공군"];
+function enemyTier(st) {
+  return st >= TIER_STAGE[3] ? 3 : st >= TIER_STAGE[2] ? 2 : st >= TIER_STAGE[1] ? 1 : 0;
+}
+
+/* TIER 1 — 붉게 달아오른 야수 색 */
+const RAGE_SKINS = [
+  { body:"#b8394a", body2:"#5c1220", wing:"#7d1f2e", edge:"#2b0910",
+    beak:"#ffb03a", eye:"#ff4d3d", glow:"#ff2a1a", aura:"rgba(255,60,40,.55)" },
+  { body:"#7a4bb8", body2:"#2c1150", wing:"#4a2380", edge:"#170729",
+    beak:"#ffd14a", eye:"#ff8a2a", glow:"#ff6a10", aura:"rgba(180,60,255,.5)" },
+  { body:"#3f6f4a", body2:"#12301c", wing:"#245234", edge:"#08180d",
+    beak:"#ffe36a", eye:"#c8ff3d", glow:"#8cff1a", aura:"rgba(120,255,60,.45)" }
+];
+/* TIER 2 — 어둠 위에 떠 있는 네온 결정 */
+const VOID_SKINS = [
+  { dark:"#1b2450", dark2:"#070b1e", neon:"#7ef0ff", core:"#ffffff" },
+  { dark:"#3a1450", dark2:"#12041c", neon:"#ff6ae8", core:"#ffe9ff" },
+  { dark:"#0f3a3a", dark2:"#031414", neon:"#7dff9f", core:"#f2fff5" }
+];
+/* TIER 3 — 외계인 피부색 3종 */
+const ALIEN_SKINS = [
+  { skin:"#a8e86a", skin2:"#5aa832", line:"#2f6b1c", glow:"#c8ff5a", light:"#7ef0ff" },
+  { skin:"#cba8ff", skin2:"#7a4ecf", line:"#472a86", glow:"#e08cff", light:"#ffd76a" },
+  { skin:"#8fe6e0", skin2:"#3f9fa8", line:"#1f5f68", glow:"#7ef0ff", light:"#ff8fbc" }
+];
+const SKIN_SETS = [BIRD_SKINS, RAGE_SKINS, VOID_SKINS, ALIEN_SKINS];
+function tierSkin(t) {
+  const a = SKIN_SETS[t] || BIRD_SKINS;
+  return a[(Math.random() * a.length) | 0];
+}
+
+function makeEnemy(lane, y, opt) {
+  const hp = (opt && opt.hp) || enemyHp();
+  const roll = Math.random();
+  const type = roll < 0.46 ? "bird" : roll < 0.76 ? "ghost" : "slime";
+  const x = (lane + 0.5) * LANE_W;
+  return {
+    x, baseX: x, y,
+    r: ENEMY_R, hp, maxHp: hp, speed: enemySpeed(),
+    type, hurt: 0, elite: false,
+    tier: enemyTier(Game.stage),                 // 태어난 스테이지의 세대를 그대로 가진다
+    /* 움직임: 날갯짓 위상 · 좌우 흔들림 · 몸통 출렁임을 개체마다 다르게 */
+    wob: rand(0, TAU),
+    flap: rand(0, TAU), flapSp: rand(7.5, 11),
+    sway: rand(6, LANE_W * 0.34), swayPh: rand(0, TAU), swaySp: rand(0.8, 1.6),
+    skin: tierSkin(enemyTier(Game.stage))
+  };
+}
+
+/* ── 편대 비행 ─────────────────────────────────────────────────────────────
+ * 개체가 각자 내려오는 대신, 하나의 "대형"이 좌우로 스치듯 움직이고
+ * 구성원은 대형 중심에서의 오프셋으로 위치가 결정된다(회전까지 반영).
+ * 편대를 전멸시키면 보너스 점수와 확정 아이템이 나온다. */
+function spawnFormation() {
+  const kind = ["v", "circle", "diamond"][(Math.random() * 3) | 0];
+  const offs = [];
+  if (kind === "v") {
+    for (let i = -2; i <= 2; i++) offs.push({ x: i * 40, y: Math.abs(i) * 30 });
+  } else if (kind === "circle") {
+    for (let i = 0; i < 6; i++)
+      offs.push({ x: Math.cos(i / 6 * TAU) * 60, y: Math.sin(i / 6 * TAU) * 60 });
+  } else {
+    offs.push({ x: 0, y: -46 }, { x: -46, y: 0 }, { x: 46, y: 0 },
+              { x: 0, y: 46 }, { x: 0, y: 0 });
+  }
+  const maxOff = Math.max.apply(null, offs.map(o => Math.abs(o.x))) + ENEMY_R + 8;
+  const f = {
+    kind, t: 0, rot: 0,
+    cx: CW / 2, cy: -110,
+    vy: enemySpeed() * 1.35,        // 편대는 낱개보다 확실히 빠르게 밀고 내려온다
+    amp: Math.min(rand(70, 130), CW / 2 - maxOff),
+    ph: rand(0, TAU), maxOff,
+    members: [], left: offs.length
+  };
+  const hp = enemyHp() + 1;                      // 편대는 조금 더 단단하다
+  for (const o of offs) {
+    const e = makeEnemy(0, 0, { hp });
+    e.type = "bird";                             // 편대는 새 부대
+    e.form = f; e.ox = o.x; e.oy = o.y;
+    e.baseX = undefined; e.sway = 0;
+    e.x = f.cx + o.x; e.y = f.cy + o.y;
+    f.members.push(e);
+    Game.enemies.push(e);
+  }
+  Game.formations.push(f);
+}
+
+function updateFormations(dt) {
+  for (let i = Game.formations.length - 1; i >= 0; i--) {
+    const f = Game.formations[i];
+    f.t += dt;
+    f.cy += f.vy * dt;
+
+    if (f.kind === "v") {                        // 지그재그로 미끄러지는 V자
+      f.cx = CW / 2 + Math.sin(f.t * 1.55 + f.ph) * f.amp;
+      f.rot = Math.sin(f.t * 1.55 + f.ph) * 0.2;
+    } else if (f.kind === "circle") {            // 빙글빙글 도는 원형
+      f.rot += dt * 1.45;
+      f.cx = CW / 2 + Math.sin(f.t * 1.05 + f.ph) * f.amp * 0.75;
+    } else {                                     // 좌우로 빠르게 오가는 다이아
+      f.cx = CW / 2 + Math.sin(f.t * 2.3 + f.ph) * f.amp;
+      f.rot += dt * 0.7;
+    }
+    f.cx = clamp(f.cx, f.maxOff, CW - f.maxOff);
+
+    const c = Math.cos(f.rot), sn = Math.sin(f.rot);
+    for (const e of f.members) {                 // 회전을 반영한 대형 좌표
+      if (e.dead) continue;
+      e.x = f.cx + e.ox * c - e.oy * sn;
+      e.y = f.cy + e.ox * sn + e.oy * c;
+    }
+    if (f.cy - 120 > CH) {                       // 화면을 완전히 지나가면 정리
+      for (const e of f.members) e.gone = true;
+      Game.formations.splice(i, 1);
+    }
+  }
+}
+
+function formationBonus(f) {
+  const bonus = 250 + Game.stage * 40;
+  Game.score += bonus;
+  pop("편대 격파! +" + bonus, clamp(f.cx, 70, CW - 70), f.cy, "#ffd76a");
+  burst(f.cx, f.cy, 22, true);
+  Game.shake = Math.max(Game.shake, 8);
+  Sound.play("bigpop");
+  for (let i = 0; i < 3; i++)
+    spawnDrop(f.cx + rand(-34, 34), f.cy, "gold");
+  spawnDrop(f.cx, f.cy - 18,
+            (weaponAvailable() && Math.random() < 0.30) ? "weapon" : shieldOr("magnet"));
+}
+
+function spawnWave() {
+  const stage = Game.stage;
+
+  // 편대 비행 (스테이지 2부터)
+  if (stage >= 2 && Math.random() < 0.24) { spawnFormation(); return; }
+
+  // 엘리트: 3배 크기 · 투하물을 던진다
+  if (stage >= 2 && Math.random() < 0.13) {
+    const lane = 1 + Math.floor(Math.random() * (LANES - 2));
+    const hp = enemyHp() * 9 + 6;
+    Game.enemies.push({
+      x: (lane + 0.5) * LANE_W, y: -ENEMY_R * ELITE_SCALE - 10,
+      r: ENEMY_R * ELITE_SCALE, hp, maxHp: hp,
+      speed: enemySpeed() * 0.55, type: "elite",
+      wob: rand(0, TAU), hurt: 0, elite: true,
+      tier: enemyTier(stage),
+      flap: rand(0, TAU), flapSp: 4.2, skin: tierSkin(enemyTier(stage)),
+      drift: rand(-40, 40)
+    });
+    return;
+  }
+
+  // 일반 편대 — 라인을 채우는 4가지 패턴
+  const pat = ["full", "gap", "zigzag", "pair"][(Math.random() * 4) | 0];
+  const y0 = -ENEMY_R - 8;
+  if (pat === "full") {
+    for (let i = 0; i < LANES; i++) Game.enemies.push(makeEnemy(i, y0));
+  } else if (pat === "gap") {
+    const hole = (Math.random() * LANES) | 0, hole2 = (Math.random() * LANES) | 0;
+    for (let i = 0; i < LANES; i++)
+      if (i !== hole && i !== hole2) Game.enemies.push(makeEnemy(i, y0));
+  } else if (pat === "zigzag") {
+    for (let i = 0; i < LANES; i++)
+      Game.enemies.push(makeEnemy(i, y0 - (i % 2) * 46));
+  } else {
+    const start = (Math.random() * (LANES - 2)) | 0;
+    for (let i = start; i < start + 3 && i < LANES; i++) {
+      Game.enemies.push(makeEnemy(i, y0));
+      Game.enemies.push(makeEnemy(i, y0 - 48));
+    }
+  }
+}
+
+/* ── 발사 ──────────────────────────────────────────────────────────────────
+ * 무기 레벨이 오르면 탄 수가 늘고, 두 단계마다 발당 데미지도 한 칸 오른다.
+ * 늘어나는 방식은 펫마다 다르다.
+ *   고양이 : 곧게 위로 나가는 줄이 "옆으로 한 줄씩" 늘어난다 (1 → 5줄)
+ *            유도를 걷어낸 대신 겨냥해서 줄을 맞추는 재미가 생긴다.
+ *   강아지 : 예전 그대로 부챗살이 한 갈래씩 넓어진다.
+ * 최대 5단계. */
+const COL_GAP = 28;                          // 고양이 줄 간격(px)
+/* 펫별 연사 계수 — 숫자 하나이거나 레벨별 배열일 수 있다 */
+function rateMulOf(pet, lv) {
+  const m = pet.shot.rateMul;
+  if (Array.isArray(m)) return m[clamp(lv - 1, 0, m.length - 1)] || 1;
+  return m || 1;
+}
+
+function fireStats() {
+  const lv = Game.player ? Game.player.wlv : 1;
+  const pet = Game.pet;
+  /* 고양이 : 레벨 수만큼의 줄을 가운데 기준으로 좌우 대칭 배치 */
+  const cols = [];
+  for (let i = 0; i < lv; i++) cols.push((i - (lv - 1) / 2) * COL_GAP);
+  /* 강아지 : 예전 부챗살 그대로 (4~5레벨에서 바깥 탄이 허공을 갈라
+   *          한 번 좁혀 둔 값을 유지한다) */
+  const angles = [[0],
+                  [-0.055, 0.055],
+                  [-0.14, 0, 0.14],
+                  [-0.185, -0.062, 0.062, 0.185],
+                  [-0.245, -0.122, 0, 0.122, 0.245]][lv - 1];
+  const rapid = Game.player && Game.player.rapidT > 0;
+  return {
+    lv, cols, angles, rapid,
+    dmg: pet.shot.dmg + Math.floor((lv - 1) / 2),
+    rate: (lv >= 5 ? 0.10 : lv >= 4 ? 0.12 : FIRE_RATE) * rateMulOf(pet, lv)
+          / (rapid ? RAPID_MUL : 1)
+  };
+}
+
+function fire() {
+  const pet = Game.pet, p = Game.player, st = fireStats();
+  const sp = pet.shot.speed * (st.rapid ? 1.15 : 1);      // 연사 중엔 탄속도 살짝
+
+  if (pet.key === "cat") {                                // 고양이 : 평행한 여러 줄
+    for (const ox of st.cols)
+      Game.bullets.push({ x: p.x + ox, y: p.y - 26, vx: 0, vy: -sp, homing: 0,
+                          r: 9, dmg: st.dmg, kind: "paw", t: 0, spin: 0 });
+  } else {                                                // 강아지 : 부챗살
+    for (const a of st.angles)
+      Game.bullets.push({ x: p.x + a * 70, y: p.y - 22,
+                          vx: Math.sin(a) * sp, vy: -Math.cos(a) * sp, homing: 0,
+                          r: 10, dmg: st.dmg, kind: "bone", t: 0, spin: rand(0, TAU) });
+  }
+  Sound.play(pet.key === "cat" ? "catShot" : "dogShot");
+  Game.fireT = st.rate;
+}
+
+/* ── 드론 ──────────────────────────────────────────────────────────────
+ * 본체 좌우를 살짝 뒤처져 따라다니며 독립적으로 사격한다. */
+function droneSlots() {
+  const p = Game.player;
+  if (!p || p.dstep <= 0) return [];
+  // 방사형은 1기로 시작해 ★3에서 2기가 되고, 그 뒤로는 계속 2기
+  const n = (droneForm() >= 1 || droneRank() >= 3) ? 2 : 1;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const side = n === 1 ? 1 : (i === 0 ? -1 : 1);
+    out.push({
+      x: p.x + side * 42 + Math.sin(Game.timer * 2 + i) * 3,
+      y: p.y + 18 + Math.sin(Game.timer * 3 + i * 1.7) * 4,
+      side
+    });
+  }
+  return out;
+}
+
+function fireDrones(dt) {
+  const p = Game.player;
+  const sp = droneSpec();
+  if (!sp) return;
+
+  /* 전기 스파크는 미사일과 "따로" 돈다 — 같은 타이머에 묶으면 둘 중 하나가
+   * 상대의 발사 주기에 끌려가 리듬이 죽는다. 폭풍형은 두 무기가 각자
+   * 자기 박자로 나가면서 겹칠 때 화면이 가장 화려해진다. */
+  if (sp.chain) {
+    p.sparkT = (p.sparkT || 0) - dt;
+    if (p.sparkT <= 0) {
+      let hit = false;
+      for (const d of droneSlots()) hit = fireSpark(d.x, d.y - 10, sp) || hit;
+      p.sparkT = (hit ? sp.srate : 0.12) / (p.rapidT > 0 ? RAPID_MUL : 1);
+      if (hit) Sound.play("zap");
+    }
+  }
+
+  p.droneT -= dt;
+  if (p.droneT > 0) return;
+  p.droneT = sp.rate / (p.rapidT > 0 ? RAPID_MUL : 1);   // 연사 강화는 드론에도 걸린다
+
+  const col = Game.pet.body2;
+  for (const d of droneSlots()) {
+    if (sp.form === 0) {                        // 방사형: 부채꼴로 흩뿌린다
+      for (let i = 0; i < sp.shots; i++) {
+        const a = sp.shots === 1 ? 0 : -sp.arc + (2 * sp.arc) * (i / (sp.shots - 1));
+        Game.bullets.push({ x: d.x, y: d.y - 10, vx: Math.sin(a) * 380, vy: -Math.cos(a) * 380,
+                            r: 7, dmg: sp.dmg, kind: "d_spread", homing: 0, t: 0, spin: 0, col });
+      }
+    } else if (sp.form === 1) {                 // 집중형: 곧고 빠른 직사 (★3은 2줄)
+      for (let i = 0; i < sp.shots; i++) {
+        const ox = sp.shots === 1 ? 0 : (i === 0 ? -5 : 5);
+        Game.bullets.push({ x: d.x + ox, y: d.y - 12, vx: 0, vy: -820,
+                            r: 8, dmg: sp.dmg, kind: "d_focus", homing: 0, t: 0, spin: 0, col });
+      }
+    } else {                    // 미사일형 · 폭풍형: 유도 + 범위 폭발 (★2 이상은 2발)
+      for (let i = 0; i < sp.shots; i++) {
+        const ox = sp.shots === 1 ? 0 : (i === 0 ? -7 : 7);
+        Game.bullets.push({ x: d.x + ox, y: d.y - 10, vx: d.side * 60 + ox * 6, vy: -300,
+                            r: 12, dmg: sp.dmg, kind: "d_missile", homing: 2.8,
+                            blast: sp.blast, t: 0, spin: 0, col });
+      }
+    }
+  }
+  Sound.play(sp.form >= 2 ? "missile" : "drone");
+}
+
+/* ── 전기 스파크 ──────────────────────────────────────────────────────
+ * 탄이 아니라 "선"이다. 발사 즉시 가장 가까운 적을 때리고, 그 적에서
+ * range 안의 다음 적으로 튄다. 시각 효과(번개 선 + 스파크 파편)는
+ * Game.bolts 에 0.2초짜리로 남겨 두고 매 프레임 지지직 흔들어 그린다. */
+function fireSpark(x, y, sp) {
+  const used = new Set(), pts = [{ x, y }];
+  let cx = x, cy = y, dmg = sp.sdmg || sp.dmg;
+  for (let i = 0; i < sp.chain; i++) {
+    const lim = i === 0 ? sp.reach : sp.range;           // 첫 표적은 멀리, 이후는 가까운 적으로만
+    let best = null, bd = lim * lim;
+    for (const e of Game.enemies) {
+      if (e.dead || used.has(e) || e.y < -e.r || e.y > CH) continue;
+      const d = dist2(cx, cy, e.x, e.y);
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (!best) break;
+    used.add(best);
+    pts.push({ x: best.x, y: best.y });
+    best.hp -= dmg; best.hurt = 1;
+    sparkBurst(best.x, best.y, 5);
+    if (best.hp <= 0) { best.dead = true; killEnemy(best); }
+    cx = best.x; cy = best.y;
+    dmg = Math.max(1, Math.ceil(dmg * 0.8));
+  }
+  if (pts.length < 2) return false;
+  Game.bolts.push({ pts, life: 0.2, max: 0.2 });
+  return true;
+}
+
+/* ── 강화 알림 ────────────────────────────────────────────────────────
+ * 강화 아이템을 먹은 순간 머리 위에 통통한 글자가 "뽕" 튀어나와
+ * 천천히 떠오르며 사라진다. 무엇이 올랐는지는 아랫줄 알약에 적는다.
+ * (팝업 텍스트만으로는 강화의 쾌감이 전혀 남지 않았다) */
+function upgradeFx(label, sub, top, bot, outline, size) {
+  Game.upFx = { t: 0, life: 1.35, label, sub, top, bot, outline, size: size || 30 };
+  const p = Game.player;
+  if (!p) return;
+  for (let i = 0; i < 16; i++) {                     // 머리 위에서 터지는 반짝이
+    const a = rand(-Math.PI, 0), spd = rand(90, 260);
+    Game.parts.push({
+      x: p.x + rand(-24, 24), y: p.y - 40,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      life: rand(0.5, 0.9), rot: rand(0, TAU), spin: rand(-9, 9),
+      size: rand(5, 10), kind: "star",
+      color: [top, bot, "#ffffff", "#ffd76a"][(Math.random() * 4) | 0]
+    });
+  }
+}
+
+function drawUpgradeFx() {
+  const f = Game.upFx, p = Game.player;
+  if (!f || !p) return;
+  const k = clamp(f.t / f.life, 0, 1);
+  const rise = easeOutCubic(clamp(k * 1.7, 0, 1)) * 58;          // 위로 떠오른다
+  const pop = k < 0.24 ? easeOutBack(k / 0.24) : 1;              // 튀어나오는 등장
+  const alpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
+
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.translate(clamp(p.x, 96, CW - 96), p.y - 62 - rise);
+  ctx.scale(pop, pop);
+  drawBubbleText(f.label, 0, 0, f.size, f.top, f.bot, f.outline, 1);
+  if (f.sub) {                                                   // 아랫줄 알약
+    ctx.font = "800 12px " + FONT;
+    const w = ctx.measureText(f.sub).width + 22;
+    ctx.fillStyle = "rgba(30,20,40,.62)";
+    rrect(ctx, -w / 2, f.size * 0.60 + 3, w, 20, 10); ctx.fill();
+    text(f.sub, 0, f.size * 0.60 + 13, 12, "#ffffff", "center", 800);
+  }
+  ctx.restore();
+}
+
+/* 스파크 파편 — 번개가 닿은 자리에서 튀는 작은 별 모양 불꽃 */
+function sparkBurst(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), spd = rand(120, 320);
+    Game.parts.push({
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 40,
+      life: rand(0.2, 0.45), rot: rand(0, TAU), spin: rand(-20, 20),
+      size: rand(7, 14), kind: "spark",
+      color: Math.random() < 0.5 ? "#9ff3ff" : "#fff9a8"
+    });
+  }
+}
+
+/* 지지직 튀는 번개 선 — 두 점 사이를 무작위로 꺾어 잇고, 굵은 글로우 + 얇은 흰 심 */
+function drawBolts() {
+  for (const b of Game.bolts) {
+    const k = b.life / b.max;
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    /* 마디 위치를 먼저 한 번만 뽑아 둔다 — 겹쳐 그리는 세 겹이 서로 다른
+     * 경로를 타면 굵어 보이는 게 아니라 그냥 지저분해진다. */
+    const path = [];
+    for (let i = 0; i < b.pts.length - 1; i++) {
+      const a = b.pts[i], c = b.pts[i + 1];
+      const seg = [{ x: a.x, y: a.y }];
+      const segs = 6;
+      const nx = -(c.y - a.y), ny = (c.x - a.x);
+      const len = Math.hypot(nx, ny) || 1;
+      for (let j = 1; j < segs; j++) {                   // 중간 마디를 좌우로 흔든다
+        const t = j / segs;
+        const off = rand(-13, 13) * (1 - Math.abs(t - 0.5) * 0.6);
+        seg.push({ x: a.x + (c.x - a.x) * t + nx / len * off,
+                   y: a.y + (c.y - a.y) * t + ny / len * off });
+      }
+      seg.push({ x: c.x, y: c.y });
+      path.push(seg);
+    }
+    const trace = () => {
+      ctx.beginPath();
+      for (const seg of path) {
+        ctx.moveTo(seg[0].x, seg[0].y);
+        for (let j = 1; j < seg.length; j++) ctx.lineTo(seg[j].x, seg[j].y);
+      }
+      ctx.stroke();
+    };
+    /* 세 겹으로 굵게: 바깥 번짐 → 시안 몸통 → 흰 심 */
+    const LAYERS = [
+      { col: "#4fd8ff", w: 20, a: 0.30, blur: 26 },
+      { col: "#7df3ff", w: 11, a: 0.75, blur: 16 },
+      { col: "#ffffff", w: 5,  a: 1.00, blur: 6 }
+    ];
+    for (const L of LAYERS) {
+      ctx.globalAlpha = L.a * clamp(k * 1.6, 0, 1);
+      ctx.strokeStyle = L.col;
+      ctx.lineWidth = L.w * (0.75 + k * 0.35);           // 사라지면서 가늘어진다
+      ctx.shadowColor = "#7df3ff"; ctx.shadowBlur = L.blur;
+      trace();
+    }
+    ctx.shadowBlur = 0;
+    for (let i = 1; i < b.pts.length; i++) {             // 착탄점 섬광
+      const p = b.pts[i];
+      ctx.globalAlpha = clamp(k * 1.4, 0, 1);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9 + (1 - k) * 11, 0, TAU); ctx.fill();
+      ctx.globalAlpha = clamp(k, 0, 1) * 0.6;
+      ctx.fillStyle = "#7df3ff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17 + (1 - k) * 17, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* 미사일 착탄 — 반경 안의 적을 함께 때린다 */
+function missileBlast(x, y, dmg, src, radius) {
+  burst(x, y, 12, true);
+  Game.shake = Math.max(Game.shake, 5);
+  Sound.play("bigpop");
+  const R = radius || 66;
+  for (const e of Game.enemies) {
+    if (e === src || e.dead) continue;
+    if (dist2(x, y, e.x, e.y) > (R + e.r) * (R + e.r)) continue;
+    e.hp -= Math.ceil(dmg * 0.75); e.hurt = 1;
+    if (e.hp <= 0) { e.dead = true; killEnemy(e); }
+  }
+  Game.parts.push({ x, y, vx: 0, vy: 0, life: 0.34, rot: 0, spin: 0,
+                    size: R, kind: "blast", color: "#fff3c9" });
+}
+
+/* ── 파티클 · 팝업 ─────────────────────────────────────────────────────── */
+function burst(x, y, n, big) {
+  const pet = Game.pet;
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), sp = rand(60, big ? 420 : 250);
+    Game.parts.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70,
+      life: rand(0.5, 1.0), rot: rand(0, TAU), spin: rand(-10, 10),
+      size: rand(4, big ? 12 : 8), kind: pet.particle,
+      color: pet.pcolor[(Math.random() * pet.pcolor.length) | 0]
+    });
+  }
+}
+function pop(str, x, y, color) { Game.pops.push({ str, x, y, color, life: 0.9 }); }
+
+/* ── 보스 ──────────────────────────────────────────────────────────────
+ * 보스는 "적 오브젝트"로 만들어 기존 충돌·피격·렌더 경로를 그대로 태운다.
+ * 대신 움직임만 별도 AI가 통제한다(강하 → 좌우 배회 → 예고 → 급강하). */
+function startBoss() {
+  Game.lastBossStage = Game.stage;
+  Game.bossT = 0;
+  Game.rushLeft = 0;
+  const hp = 70 + Game.stage * 26;
+  const e = {
+    x: CW / 2, y: -140, r: 88, hp, maxHp: hp, speed: 0,
+    type: "elite", elite: true, boss: true,
+    wob: 0, flap: 0, flapSp: 3.4, hurt: 0, drift: 0,
+    skin: BIRD_SKINS[(Game.stage / BOSS_EVERY) % BIRD_SKINS.length | 0],
+    phase: "enter", pt: 0, diveT: 4.5, minionT: 3.2, homeY: 210
+  };
+  Game.boss = e;
+  Game.enemies.push(e);
+  Game.stageBanner = 0;
+  Game.shake = 8;
+  Sound.bpm = 168;                                   // BGM이 빨라진다
+  Sound.play("boss");
+}
+
+function updateBoss(dt) {
+  const b = Game.boss;
+  if (!b) return;
+  if (b.dead || Game.enemies.indexOf(b) < 0) { Game.boss = null; return; }
+
+  Game.bossT += dt;
+  b.pt += dt;
+  b.flap += dt * b.flapSp;
+
+  if (b.phase === "enter") {
+    b.y += 150 * dt;
+    if (b.y >= b.homeY) { b.y = b.homeY; b.phase = "idle"; b.pt = 0; }
+
+  } else if (b.phase === "idle") {
+    b.x = CW / 2 + Math.sin(Game.bossT * 0.85) * 128;
+    b.y = b.homeY + Math.sin(Game.bossT * 1.6) * 12;
+    b.diveT -= dt;
+    b.minionT -= dt;
+    if (b.minionT <= 0) {                            // 새끼 로봇 드론 사출
+      b.minionT = Math.max(2.2, 3.6 - Game.stage * 0.05);
+      for (const dx of [-52, 52]) {
+        const m = makeEnemy(0, b.y + 30, { hp: Math.max(1, Math.round(enemyHp() * 0.7)) });
+        m.type = "botling";                          // 보스와 한 세트인 꼬마 로봇
+        m.r = 17;
+        m.baseX = clamp(b.x + dx, 30, CW - 30);
+        m.x = m.baseX;
+        m.sway = rand(14, 30);
+        m.speed = enemySpeed() * 1.15;
+        Game.enemies.push(m);
+      }
+    }
+    if (b.diveT <= 0) {                              // 예고 시작 — 지금 위치를 겨냥한다
+      b.phase = "warn"; b.pt = 0;
+      const pl = Game.player;
+      b.diveX = clamp(pl ? pl.x : b.x, b.r * 0.6, CW - b.r * 0.6);
+      b.diveFromX = b.x;
+      Sound.play("warn");
+    }
+
+  } else if (b.phase === "warn") {                   // 급강하 예고 — 낙하 지점을 미리 보여 준다
+    b.hurt = 0.6;
+    /* 예고 동안 x는 목표 지점으로 미리 미끄러진다.
+     * (표시만 해 두고 엉뚱한 데로 떨어지면 표시가 거짓말이 된다) */
+    b.x = b.diveFromX + (b.diveX - b.diveFromX) * easeOutCubic(clamp(b.pt / BOSS_WARN, 0, 1));
+    if (b.pt > BOSS_WARN) { b.phase = "dive"; b.pt = 0; b.diveFrom = b.y; }
+
+  } else if (b.phase === "dive") {                   // 플레이어 높이까지 그대로 내리꽂는다
+    const k = Math.min(1, b.pt / 0.42);
+    b.x = b.diveX;
+    b.y = b.diveFrom + (BOSS_DIVE_Y - b.diveFrom) * (k * k);     // 가속하며 떨어진다
+    if (k >= 1) {                                    // 착지 충격
+      b.phase = "back"; b.pt = 0; b.backFrom = b.y;
+      Game.shake = 16;
+      Sound.play("bigpop");
+      for (let i = 0; i < 16; i++) {                 // 바닥에서 옆으로 퍼지는 먼지
+        const sgn = i % 2 ? 1 : -1;
+        Game.parts.push({
+          x: b.x, y: BOSS_DIVE_Y + b.r * 0.7,
+          vx: sgn * rand(120, 460), vy: rand(-190, -40),
+          life: rand(0.4, 0.8), rot: rand(0, TAU), spin: rand(-10, 10),
+          size: rand(5, 11), kind: "star", color: "#e6ecf5"
+        });
+      }
+    }
+
+  } else if (b.phase === "back") {
+    const k = Math.min(1, b.pt / 0.9);
+    b.y = b.backFrom + (b.homeY - b.backFrom) * k;
+    if (k >= 1) { b.phase = "idle"; b.pt = 0; b.diveT = Math.max(3, 6 - Game.stage * 0.08); }
+  }
+
+  if (Game.bossT > BOSS_TIMEOUT) {                   // 오래 못 잡으면 도망간다(교착 방지)
+    b.y -= 260 * dt;
+    if (b.y < -160) {
+      const i = Game.enemies.indexOf(b);
+      if (i >= 0) Game.enemies.splice(i, 1);
+      endBoss(false);
+    }
+  }
+}
+
+function endBoss(defeated) {
+  Game.boss = null;
+  Sound.bpm = 148;
+  Game.spawnT = defeated ? 1.6 : 0.8;
+  if (!defeated) pop("보스가 달아났다...", CW / 2, 260, "#dceaf7");
+}
+
+function bossDefeated(b) {
+  const bonus = 900 + Game.stage * 140;
+  Game.score += bonus;
+  pop("BOSS CLEAR! +" + bonus, CW / 2, 240, "#ffd76a");
+  Game.shake = 18;
+  Game.flash = 0.9;
+  for (let i = 0; i < 26; i++)
+    Game.parts.push({ x: b.x, y: b.y, vx: rand(-380, 380), vy: rand(-420, 120),
+      life: rand(0.7, 1.3), rot: rand(0, TAU), spin: rand(-12, 12), size: rand(6, 14),
+      kind: Game.pet.particle, color: Game.pet.pcolor[(Math.random() * 4) | 0] });
+  for (let i = 0; i < 8; i++)                        // 골드 샤워
+    spawnDrop(b.x + rand(-70, 70), b.y + rand(-20, 20), "gold");
+  spawnDrop(b.x - 26, b.y, weaponAvailable() ? "weapon" : shieldOr("magnet"));
+  spawnDrop(b.x + 26, b.y, shieldOr("gold"));
+  endBoss(true);
+}
+
+/* ── 필살기 ─────────────────────────────────────────────────────────── */
+function ultReady() { return Game.ult >= ULT_NEED && Game.ultT <= 0; }
+
+function fireUlt() {
+  if (!ultReady() || Game.state !== "playing") return;
+  Game.ult = 0;
+  Game.ultT = ULT_TIME;
+  Game.ultR = 0;
+  Game.player.inv = ULT_TIME + 0.4;          // 쓸어버리는 동안은 무적
+  Game.shake = 13;
+  Sound.play("ult");
+  pop(Game.pet.key === "cat" ? "냥냥 충격파!" : "왕왕 충격파!",
+      Game.player.x, Game.player.y - 60, "#ffffff");
+}
+
+/* 충격파가 퍼지면서 닿는 적을 쓸어낸다 (엘리트는 큰 피해만) */
+function updateUlt(dt) {
+  if (Game.ultT <= 0) return;
+  Game.ultT -= dt;
+  const k = 1 - clamp(Game.ultT / ULT_TIME, 0, 1);
+  const p = Game.player;
+  Game.ultR = k * 980;
+
+  for (let i = Game.enemies.length - 1; i >= 0; i--) {
+    const e = Game.enemies[i];
+    if (e.ulted) continue;
+    if (dist2(p.x, p.y, e.x, e.y) > (Game.ultR + e.r) * (Game.ultR + e.r)) continue;
+    e.ulted = true;
+    if (e.elite) {
+      e.hp -= Math.ceil(e.maxHp * (e.boss ? 0.22 : ULT_ELITE_DMG));   // 보스는 22%만
+      e.hurt = 1;
+      burst(e.x, e.y, 10);
+      if (e.hp <= 0) { e.dead = true; killEnemy(e, true); }
+    } else {
+      e.dead = true;
+      killEnemy(e, true);
+    }
+  }
+  if (Game.ultT <= 0) { Game.ultT = 0; Game.ultR = 0; }
+}
+
+/* ── 피버타임 : 화면을 가르는 초대형 레이저 ─────────────────────────── */
+function addFever(v) {
+  if (Game.feverT > 0) return;
+  Game.fever = Math.min(1, Game.fever + v);
+  if (Game.fever >= 1) startFever();
+}
+
+function startFever() {
+  Game.fever = 1;
+  Game.feverT = FEVER_TIME;
+  Game.feverBanner = 1.6;
+  Game.player.inv = FEVER_TIME + 0.4;        // 피버 동안은 무적
+  Game.feverShotT = 0;                       // 곧바로 첫 발
+  Game.shake = 12;
+  Sound.play("fever");
+  Sound.bpm = 178;
+}
+
+/* 거대 관통탄 한 발 사출 */
+function spawnFeverShot() {
+  const p = Game.player;
+  if (!p) return;
+  Game.feverShots.push({
+    x: p.x, y: p.y - 30, r: FEVER_R, vy: FEVER_VY,
+    spin: rand(0, TAU), t: 0,
+    wob: rand(0, TAU)
+  });
+  Game.shake = Math.max(Game.shake, 6);
+  Sound.play("whoosh");
+}
+
+function updateFever(dt) {
+  /* ── 지속시간 · 발사 주기 ── */
+  if (Game.feverT > 0) {
+    Game.feverT -= dt;
+    if (Game.feverBanner > 0) Game.feverBanner -= dt;
+    Game.feverShotT -= dt;
+    if (Game.feverShotT <= 0) { spawnFeverShot(); Game.feverShotT = FEVER_GAP; }
+    if (Game.feverT <= 0) {
+      Game.feverT = 0;
+      Game.fever = 0;
+      Sound.bpm = Game.boss ? 168 : 148;
+    }
+  }
+
+  /* ── 관통탄 이동 · 충돌 (피버가 끝나도 남은 탄은 화면을 마저 가른다) ── */
+  const cat = Game.pet.key === "cat";
+  for (let i = Game.feverShots.length - 1; i >= 0; i--) {
+    const f = Game.feverShots[i];
+    f.t += dt;
+    f.y += f.vy * dt;
+    f.spin += dt * (cat ? 0.9 : 5.2);                     // 뼈다귀는 빠르게 회전
+    if (Math.random() < dt * 46) {                        // 꼬리에 흩날리는 하트·별
+      Game.parts.push({
+        x: f.x + rand(-f.r * 0.7, f.r * 0.7), y: f.y + rand(10, f.r * 0.8),
+        vx: rand(-70, 70), vy: rand(60, 190),
+        life: rand(0.4, 0.9), rot: rand(0, TAU), spin: rand(-8, 8),
+        size: rand(7, 15), kind: cat ? "heart" : "star",
+        color: cat ? ["#ff9ec4", "#ffd1e3", "#ffffff"][(Math.random() * 3) | 0]
+                   : ["#ffd76a", "#fff0c2", "#ffffff"][(Math.random() * 3) | 0]
+      });
+    }
+
+    for (let j = Game.enemies.length - 1; j >= 0; j--) {
+      const e = Game.enemies[j];
+      if (e.dead) continue;
+      const rr = f.r + e.r;
+      if (dist2(f.x, f.y, e.x, e.y) > rr * rr) continue;
+
+      if (e.boss || e.elite) {                            // 큰 적은 겹쳐 있는 동안 지속 피해
+        e.hp -= e.maxHp * (e.boss ? FEVER_BOSS : FEVER_ELITE) * dt;
+        e.hurt = 1;
+        if (Math.random() < dt * 30) burst(e.x, e.y + rand(-e.r, e.r), 2);
+        if (e.hp <= 0) { e.dead = true; killEnemy(e, true); }
+      } else {                                            // 일반 적은 닿는 즉시 소멸
+        e.dead = true;
+        killEnemy(e, true);
+      }
+    }
+
+    if (f.y < -f.r - 60) Game.feverShots.splice(i, 1);
+  }
+}
+
+function killEnemy(e, byUlt) {
+  if (e.boss) { bossDefeated(e); }
+  if (e.form) {                                  // 편대원이 쓰러지면 대형 카운트 감소
+    e.form.left--;
+    if (e.form.left <= 0) {
+      formationBonus(e.form);
+      const idx = Game.formations.indexOf(e.form);
+      if (idx >= 0) Game.formations.splice(idx, 1);
+    }
+  }
+  burst(e.x, e.y, e.elite ? 26 : 15, e.elite);
+  const gain = byUlt ? 6 : 10;               // 필살기 처치는 점수를 조금 덜 준다
+  Game.score += gain * e.maxHp;
+  pop("+" + (gain * e.maxHp), e.x, e.y - 6, "#ffffff");
+  Game.shake = Math.max(Game.shake, e.elite ? 10 : 3);
+  Sound.play(e.elite ? "bigpop" : "pop");
+  if (!byUlt) {
+    Game.ult = Math.min(ULT_NEED, Game.ult + ULT_KILL);
+    addFever(FEVER_KILL);
+    dropFrom(e);
+  }
+}
+
+/* 강화 아이템이 아직 쓸모가 있는가 (무기 만렙이면 드론으로 이어진다)
+ * [버그 수정] 예전엔 무기 만렙에서 확률을 0으로 잘라 버려서,
+ * 정작 드론이 열리는 시점부터 강화 아이템이 한 개도 나오지 않았다. */
+/* ── 강화 아이템 등장 규칙 ────────────────────────────────────────────
+ * "2스테이지에 한 개". 2스테이지를 한 구간(block)으로 묶어 그 안에서
+ * 딱 한 번만 내보낸다. 게다가 구간이 끝나갈수록 확률이 가파르게 올라가
+ * (아래 upgradeChance) 구간을 그냥 넘겨 버리는 일이 거의 없다.
+ * — 상한만 두면 "안 나오는 구간"이 생겨 성장이 멈춘 것처럼 느껴진다. */
+const WEAPON_EVERY = 2;                                  // 몇 스테이지에 한 개인가
+function weaponBlock() { return Math.floor((Game.stage - 1) / WEAPON_EVERY); }
+function weaponProgress() {                              // 구간을 얼마나 지나왔나 0→1
+  const span = WEAPON_EVERY * STAGE_DIST;
+  return clamp((Game.distance - weaponBlock() * span) / span, 0, 1);
+}
+/* ── 실드 등장 규칙 ────────────────────────────────────────────────────
+ * 예전엔 일반 드롭(4%)·엘리트·편대 보상·보스에서 전부 나와 거의 상시
+ * 실드를 두르고 다녔다. 이제 한 번 나오면 2~3판(랜덤) 동안 잠긴다.
+ * 모든 출처가 이 게이트를 통과해야 하고, 막히면 골드로 대체된다. */
+function shieldAvailable() { return Game.stage >= (Game.shieldNextStage || 1); }
+function shieldOr(alt) { return shieldAvailable() ? "shield" : (alt || "gold"); }
+
+function weaponAvailable() {
+  /* 만렙이어도 아이템은 계속 나온다 — 먹으면 연사 강화 버프가 된다. */
+  return Game.weaponBlock !== weaponBlock();
+}
+
+function canUpgrade() {
+  const p = Game.player;
+  return !!p && (p.wlv < MAX_WLV || p.dstep < MAX_DSTEP);
+}
+
+/* 강화는 "가끔 만나는 보상"이어야 한다. 기본 2%에서 단계가 오를수록 귀해진다. */
+function upgradeChance() {
+  const p = Game.player;
+  if (!p) return 0.02;
+  if (Game.weaponBlock === weaponBlock()) return 0;   // 이번 구간 몫은 이미 나갔다
+  /* 구간 후반부일수록 확률이 치솟는다 (0% 지점 1배 → 끝 15배).
+   * 앞쪽에서 일찍 터지면 그대로 좋고, 안 나오면 막판에 거의 확정으로 나온다. */
+  const pity = 1 + Math.pow(weaponProgress(), 2) * 14;
+  if (p.wlv < MAX_WLV) return 0.02 * [1, 0.7, 0.5, 0.32][p.wlv - 1] * pity;
+  // 드론 12단계는 뒤로 갈수록 완만하게 귀해진다
+  if (p.dstep < MAX_DSTEP)
+    return 0.02 * [0.9, 0.8, 0.72, 0.64, 0.56, 0.48, 0.42, 0.36, 0.3, 0.27, 0.24, 0.21][p.dstep] * pity;
+  return 0.02 * 0.5 * pity;                          // 만렙 — 연사 강화용으로 계속 나온다
+}
+
+function dropFrom(e) {
+  const push = (type, dx) => spawnDrop(e.x + (dx || 0), e.y, type);
+  if (e.elite) {
+    for (let i = 0; i < 5; i++) push("gold", rand(-34, 34));
+    push(Math.random() < 0.5 ? "magnet" : shieldOr("magnet"), 0);
+    return;
+  }
+  const r = Math.random();
+  let acc = 0.32;
+  if (r < acc) push("gold");             // 처음엔 50%였는데 화면이 코인으로 뒤덮였다
+  else if (r < (acc += upgradeChance())) push("weapon");
+  else if (r < (acc += 0.05)) push("magnet");
+  else if (r < (acc += 0.04)) push(shieldOr("gold"));
+}
+
+function gameOver() {
+  const p = Game.player;
+  burst(p.x, p.y, 24, true);
+  Game.shake = 14;
+  Game.state = "over";
+  Game.overT = 0.8;
+  Sound.play("hit");
+  Sound.play("over");
+  if (Game.score > (Game.best.score || 0)) {
+    Game.newRecord = true;
+    Game.best = { score: Game.score, gold: Game.gold, stage: Game.stage };
+    try { localStorage.setItem(BEST_KEY, JSON.stringify(Game.best)); } catch (e) { /* 무시 */ }
+  }
+}
+
+/* =========================================================================
+ * 메인 업데이트
+ * ========================================================================= */
+function update(dt) {
+  Game.timer += dt;
+  Game.shake = Math.max(0, Game.shake - dt * 26);
+  Sound.sync(Game.state);
+
+  if (pressed.KeyM) Sound.toggle();
+  if (pressed.KeyP && (Game.state === "playing" || Game.state === "paused"))
+    Game.state = Game.state === "playing" ? "paused" : "playing";
+  if (pressed.Space || pressed.Enter) {
+    if (Game.state === "title") { if (Game.titleT > 0.6) { Game.state = "select"; Sound.play("stage"); } }
+    else if (Game.state === "select") startGame(Game.pet.key);
+    else if (Game.state === "over" && Game.overT <= 0) Game.state = "select";
+    else if (Game.state === "playing") fireUlt();          // Space = 필살기
+  }
+  if (pressed.KeyX && Game.state === "playing") fireUlt();
+  if (pressed.KeyU && Game.state === "playing" && Game.player) {   // [테스트] 강화 즉시 획득
+    spawnDrop(Game.player.x, Game.player.y - 40, "weapon", { vx: 0, vy: -60 });
+    Game.weaponBlock = -1;                 // 테스트 키는 구간 제한을 받지 않는다
+  }
+  if (Game.state === "over") Game.overT = Math.max(0, Game.overT - dt);
+  if (Game.state === "title") updateTitle(dt);
+
+  updateParticles(dt);
+  if (Game.state !== "playing") { clearPressed(); return; }
+
+  /* ── 비행 거리 · 스테이지 ── */
+  Game.distance += SCROLL_SPEED * dt;
+  Game.stage = 1 + Math.floor(Game.distance / STAGE_DIST);
+  if (Game.stage !== Game.lastStage) {               // 스테이지가 올라간 순간
+    Game.lastStage = Game.stage;
+    Game.stageBanner = 1.8;
+    Game.flash = 0.35;
+    Sound.play("stage");
+    /* 세대 교체 스테이지에 도달하면 별도의 경고 배너 — 적 그림이 통째로 바뀐다 */
+    const tr = enemyTier(Game.stage);
+    if (tr > Game.tierShown) {
+      Game.tierShown = tr;
+      Game.tierBanner = 2.4;
+      Game.flash = 0.8;
+      Game.shake = Math.max(Game.shake, 10);
+      Sound.play("bigpop");
+    }
+  }
+  // 5스테이지마다 보스
+  if (!Game.boss && Game.stage % BOSS_EVERY === 0 && Game.stage !== Game.lastBossStage)
+    startBoss();
+  updateBoss(dt);
+
+  /* ── 플레이어 이동 (좌우 전용) ── */
+  const p = Game.player;
+  if (pointerX !== null) {
+    p.x += (pointerX - p.x) * Math.min(1, dt * 16);      // 드래그를 부드럽게 따라간다
+  } else {
+    const dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+    p.x += dir * MOVE_SPEED * dt;
+  }
+  p.x = clamp(p.x, p.r + 6, CW - p.r - 6);
+  p.tilt += (clamp((p.x - (p.lastX === undefined ? p.x : p.lastX)) * 0.06, -0.35, 0.35) - p.tilt) * Math.min(1, dt * 10);
+  p.lastX = p.x;
+  p.flap += dt * 14;
+  if (p.magnet > 0) p.magnet -= dt;
+  if (p.inv > 0) p.inv -= dt;
+  if (p.rapidT > 0) {                          // 연사 강화
+    p.rapidT -= dt;
+    if (p.rapidT <= 0) { p.rapidT = 0; pop("연사 강화 종료", p.x, p.y - 44, "#ffd76a"); }
+  }
+  if (p.shield > 0) {                          // 실드 지속시간
+    p.shieldT -= dt;
+    if (p.shieldT <= 0) {                      // 시간이 다하면 남은 개수까지 전부 사라진다
+      p.shield = 0; p.shieldT = 0;
+      pop("실드 해제", p.x, p.y - 44, "#a7f0c6");
+      Sound.play("hit");
+      for (let i = 0; i < 12; i++) {           // 깨져 흩어지는 조각
+        const a = rand(0, TAU);
+        Game.parts.push({
+          x: p.x + Math.cos(a) * 34, y: p.y - 2 + Math.sin(a) * 34,
+          vx: Math.cos(a) * rand(80, 220), vy: Math.sin(a) * rand(80, 220) - 40,
+          life: rand(0.3, 0.6), rot: rand(0, TAU), spin: rand(-10, 10),
+          size: rand(4, 8), kind: "star", color: "#a7f0c6"
+        });
+      }
+    }
+  }
+
+  /* ── 자동 발사 ── */
+  Game.fireT -= dt;
+  if (Game.fireT <= 0) fire();                 // 발사 간격은 무기 레벨이 정한다
+  fireDrones(dt);                              // 드론은 별도 주기로 사격
+
+  /* ── 편대 스폰 (보스전 중에는 멈춘다) ── */
+  if (!Game.boss) {
+    Game.spawnT -= dt;
+    if (Game.spawnT <= 0) {
+      if (Game.rushLeft > 0) {                       // 러시: 몰아치는 구간
+        spawnWave();
+        Game.rushLeft--;
+        Game.spawnT = Game.rushLeft > 0 ? RUSH_GAP : spawnGap() + CALM_EXTRA;  // 끝나면 소강
+      } else {
+        spawnWave();
+        Game.waveCount++;
+        if (Game.waveCount % RUSH_EVERY === 0) {     // 다음은 러시
+          Game.rushLeft = RUSH_WAVES;
+          Game.rushBanner = 1.4;
+          Game.spawnT = 0.75;
+          Sound.play("rush");
+        } else Game.spawnT = spawnGap();
+      }
+    }
+  }
+  if (Game.rushBanner > 0) Game.rushBanner -= dt;
+  if (Game.stageBanner > 0) Game.stageBanner -= dt;
+  if (Game.tierBanner > 0)  Game.tierBanner  -= dt;
+
+  /* ── 미사일 ── */
+  for (let i = Game.bullets.length - 1; i >= 0; i--) {
+    const b = Game.bullets[i];
+    b.t += dt; b.spin += dt * 14;
+
+    if (b.homing > 0) {                                  // 유도탄 (고양이 본체 · 드론 미사일)
+      /* [표적 락온] 매 프레임 "가장 가까운 적"을 새로 고르면 표적이 계속 바뀌며
+       * 갈팡질팡하고, 이미 지나쳐 뒤로 간 적까지 골라 되돌아가느라 탄을 버렸다.
+       * → 한 번 문 표적을 끝까지 쫓고, 그 적이 사라졌을 때만 다시 고른다.
+       *   후보는 "아직 앞(위쪽)에 있는 적"으로 한정한다. */
+      const lost = !b.lock || b.lock.dead || b.lock.gone ||
+                   b.lock.y > b.y + 30 || Game.enemies.indexOf(b.lock) < 0;
+      if (lost) {
+        if (b.lock) b.lock = null;                 // 사라진 적의 카운터는 되돌릴 필요가 없다
+        setLock(b, acquireTarget(b));
+      }
+      if (b.lock) {
+        const want = Math.atan2(b.lock.y - b.y, b.lock.x - b.x);
+        let cur = Math.atan2(b.vy, b.vx);
+        let diff = ((want - cur + Math.PI * 3) % TAU) - Math.PI;
+        cur += clamp(diff, -b.homing * dt, b.homing * dt);
+        let sp2 = Math.hypot(b.vx, b.vy);
+        if (b.accel) sp2 = Math.min(b.vmax || 900, sp2 + b.accel * dt);  // 물면 가속한다
+        b.vx = Math.cos(cur) * sp2; b.vy = Math.sin(cur) * sp2;
+      }
+    }
+
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y < -30 || b.x < -30 || b.x > CW + 30) {
+      releaseLock(b);                                    // 예약해 둔 피해량을 돌려준다
+      Game.bullets.splice(i, 1); continue;
+    }
+
+    for (const e of Game.enemies) {                      // 적중 판정
+      if (e.y < -e.r) continue;
+      if (dist2(b.x, b.y, e.x, e.y) > (e.r + b.r) * (e.r + b.r)) continue;
+      releaseLock(b);
+      e.hp -= b.dmg; e.hurt = 1;
+      Game.bullets.splice(i, 1);
+      const wasBlast = b.blast;
+      if (e.hp <= 0) { e.dead = true; killEnemy(e); }
+      else burst(b.x, b.y, 3);
+      if (wasBlast) missileBlast(b.x, b.y, b.dmg, e, wasBlast);   // 범위 폭발
+      break;
+    }
+  }
+
+  updateUlt(dt);                               // 필살기 충격파
+  updateFever(dt);                             // 피버 관통탄
+
+  /* ── 편대 대형 이동 ── */
+  updateFormations(dt);
+
+  /* ── 적 ── */
+  for (let i = Game.enemies.length - 1; i >= 0; i--) {
+    const e = Game.enemies[i];
+    if (e.dead) { Game.enemies.splice(i, 1); continue; }
+    e.y += e.speed * dt;
+    e.wob += dt * 3;
+    e.flap += dt * (e.flapSp || 8);
+    if (e.form) e.y -= e.speed * dt;                 // 편대원은 대형이 위치를 정한다
+    else if (e.baseX !== undefined)                  // 낱개는 라인 안에서 살랑살랑
+      e.x = clamp(e.baseX + Math.sin(e.wob * (e.swaySp || 1) + e.swayPh) * e.sway,
+                  e.r, CW - e.r);
+    if (e.hurt > 0) e.hurt -= dt * 4;
+    if (e.elite) {
+      e.x = clamp(e.x + Math.sin(e.wob * 0.5) * (e.drift || 0) * dt, e.r, CW - e.r);
+    }
+    if (e.gone || e.y - e.r > CH + 20) { Game.enemies.splice(i, 1); continue; }
+
+    if (p.inv <= 0 && dist2(p.x, p.y, e.x, e.y) < (p.r + e.r * 0.82) * (p.r + e.r * 0.82)) {
+      if (p.shield > 0) {                                // 실드가 1회 막아 준다
+        p.shield--; p.inv = 1.2;
+        if (p.shield <= 0) p.shieldT = 0;                // 마지막 장이 깨지면 타이머도 끝
+        burst(p.x, p.y, 14);
+        Game.shake = 9;
+        Sound.play("bigpop");
+        if (!e.elite) { e.dead = true; killEnemy(e); }
+      } else { gameOver(); return; }
+    }
+  }
+
+  /* ── 아이템 ── */
+  for (let i = Game.drops.length - 1; i >= 0; i--) {
+    const d = Game.drops[i];
+    d.t += dt;
+    const heavy = d.type === "gold";
+    const dx = p.x - d.x, dy = p.y - d.y, len = Math.hypot(dx, dy) || 1;
+
+    /* 중력 가속 — 종단 속도까지 매 프레임 빨라진다 */
+    d.vy = Math.min(heavy ? DROP_VMAX.gold : DROP_VMAX.item,
+                    d.vy + (heavy ? DROP_G.gold : DROP_G.item) * dt);
+
+    if (p.magnet > 0 && d.type === "gold" && len < 300) {   // 자석: 멀리서도 끌어당긴다
+      d.x += (dx / len) * 470 * dt; d.y += (dy / len) * 470 * dt;
+      d.vy *= Math.pow(0.05, dt);                           // 끌려오는 동안은 낙하 속도를 죽인다
+      d.vx *= Math.pow(0.05, dt);
+    } else {
+      if (len < 86) {                                       // 코앞이면 살짝 빨려온다
+        d.x += (dx / len) * 150 * dt; d.y += (dy / len) * 90 * dt + d.vy * dt * 0.5;
+      } else d.y += d.vy * dt;
+
+      d.x += d.vx * dt;                                     // 튀어나간 옆방향은 서서히 잦아든다
+      d.vx *= Math.pow(DROP_DRAG, dt);
+      if (d.x < 14) { d.x = 14; d.vx = Math.abs(d.vx) * 0.55; }              // 벽에서 튕긴다
+      else if (d.x > CW - 14) { d.x = CW - 14; d.vx = -Math.abs(d.vx) * 0.55; }
+    }
+
+    if (d.y > CH + 24) { Game.drops.splice(i, 1); continue; }
+    if (dist2(p.x, p.y, d.x, d.y) < 30 * 30) {
+      if (d.type === "gold") {
+        Game.gold++; Game.score += 5;
+        Game.ult = Math.min(ULT_NEED, Game.ult + ULT_GOLD);
+        addFever(FEVER_GOLD);                        // 골드가 피버를 채운다
+        Sound.play("coin"); pop("+1 G", d.x, d.y, "#ffd76a");
+      }
+      else if (d.type === "weapon") {
+        if (p.wlv < MAX_WLV) {                            // 무기 강화
+          p.wlv++;
+          upgradeFx("업그레이드", "무기 LV." + p.wlv, "#ffe0ec", "#ff6f9c", "#7a1a3c");
+          Game.shake = Math.max(Game.shake, 5);
+        } else if (p.dstep < MAX_DSTEP) {                 // 만렙 이후엔 드론으로
+          p.dstep++;
+          const sp = droneSpec();
+          upgradeFx("업그레이드", "드론 " + sp.name + " ★" + sp.rank,
+                    "#ffffff", DRONE_COLORS[sp.form], "#20304a");
+          Game.shake = Math.max(Game.shake, 6);
+        } else {                                          // 더 올릴 게 없다 → 연사 강화
+          p.rapidT = RAPID_TIME;
+          Game.gold += 3;
+          upgradeFx("MAX", "연사 +50%  " + RAPID_TIME.toFixed(0) + "초",
+                    "#fff6c4", "#ffb03a", "#7a4a0c", 44);
+          Game.shake = Math.max(Game.shake, 7);
+        }
+        Sound.play("power");
+      }
+      else if (d.type === "magnet") { p.magnet = MAGNET_TIME; Sound.play("power"); pop("자석!", d.x, d.y, "#8fd9ff"); }
+      else {                                              // 실드
+        p.shield = Math.min(2, p.shield + 1);
+        p.shieldT = SHIELD_TIME;                          // 먹을 때마다 시간이 새로 찬다
+        Sound.play("power");
+        pop("실드! " + SHIELD_TIME.toFixed(0) + "초", d.x, d.y, "#a7f0c6");
+      }
+      Game.drops.splice(i, 1);
+    }
+  }
+
+  clearPressed();
+}
+
+function updateParticles(dt) {
+  for (let i = Game.parts.length - 1; i >= 0; i--) {
+    const s = Game.parts[i];
+    s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt;
+    s.vy += (s.kind === "spark" ? 140 : 620) * dt; s.vx *= 0.99; s.rot += s.spin * dt;
+    if (s.life <= 0) Game.parts.splice(i, 1);
+  }
+  if (Game.upFx) {
+    Game.upFx.t += dt;
+    if (Game.upFx.t >= Game.upFx.life) Game.upFx = null;
+  }
+  for (let i = Game.bolts.length - 1; i >= 0; i--) {
+    Game.bolts[i].life -= dt;
+    if (Game.bolts[i].life <= 0) Game.bolts.splice(i, 1);
+  }
+  for (let i = Game.pops.length - 1; i >= 0; i--) {
+    const q = Game.pops[i];
+    q.life -= dt; q.y -= 34 * dt;
+    if (q.life <= 0) Game.pops.splice(i, 1);
+  }
+}
+
+function clearPressed() { for (const k in pressed) delete pressed[k]; }
+
+/* =========================================================================
+ * [1·2·5단계] 렌더링 — 배경 · 펫 · 적 · 미사일 · 아이템 · UI
+ * ========================================================================= */
+
+/* ── 아이템 낙하 물리 ───────────────────────────────────────────────────
+ * 예전엔 모든 아이템이 초당 95px 등속으로 스르륵 내려와 "떨어진다"는 느낌이
+ * 없었다. 이제는 터질 때 위로 팍 튀어올랐다가 중력으로 점점 빨라지며 낙하한다.
+ * 골드는 묵직하게(가속 크게), 강화·실드처럼 놓치면 아쉬운 아이템은
+ * 가볍게(가속 작게·종단속도 낮게) 떨어져 잡을 시간을 남겨 준다. */
+const DROP_G    = { gold: 300, item: 170 };   // 중력 가속도 (px/s^2)
+const DROP_VMAX = { gold: 330, item: 200 };   // 종단 속도 — 무한히 빨라지진 않는다
+const DROP_DRAG = 0.22;                       // 좌우 흩어짐이 잦아드는 비율(1초당)
+
+/* 아이템 사출 — 폭발 지점에서 위로 튀었다가 중력에 실려 떨어진다 */
+function spawnDrop(x, y, type, o) {
+  o = o || {};
+  /* 강화 아이템이 화면에 나온 스테이지를 기록해 둔다.
+   * 모든 드롭이 이 함수를 지나므로 여기 한 곳만 찍으면 된다. */
+  if (type === "weapon") Game.weaponBlock = weaponBlock();
+  /* 실드가 하나 나가면 2~3판 뒤에야 다시 나온다 (간격은 매번 랜덤) */
+  if (type === "shield") Game.shieldNextStage = Game.stage + (Math.random() < 0.5 ? 2 : 3);
+  const heavy = type === "gold";
+  Game.drops.push({
+    x, y, type, t: 0,
+    vx: o.vx !== undefined ? o.vx : rand(-105, 105) * (heavy ? 1 : 0.5),
+    vy: o.vy !== undefined ? o.vy : rand(-195, -85) * (heavy ? 1 : 0.7)
+  });
+}
+
+/* ── 배경 : 바이옴(지형) × 시간대 ───────────────────────────────────────
+ * 스테이지가 깊어지면 "지나가는 땅" 자체가 바뀐다.
+ *   1~29   하늘   : 구름바다 위
+ *   30~59  숲     : 침엽수 캔버스와 굽이치는 강 위
+ *   60~89  바닷가 : 파도치는 바다와 오른쪽 모래사장 위
+ *   90~    우주   : 성운과 별, 그리고 멀리서 옆으로 흘러가는 지구
+ * 각 바이옴 안에서는 예전처럼 5스테이지마다 시간대가 한 칸씩 흘러
+ * 아침 → 한낮 → 노을 → 밤 순으로 "서서히 어두워진다".
+ * 바이옴이 바뀔 때도 같은 1.4초 크로스페이드를 그대로 쓰므로
+ * 하늘색도 지형도 툭 끊기지 않고 서로 녹아든다. */
+const clouds = [];
+for (let i = 0; i < 11; i++)
+  clouds.push({ x: rand(0, CW), y: rand(-100, CH), s: rand(26, 62),
+                sp: rand(28, 70), a: rand(0.45, 0.95) });
+const sparks = [];
+for (let i = 0; i < 26; i++)
+  sparks.push({ x: rand(0, CW), y: rand(0, CH), r: rand(1, 2.6), sp: rand(90, 200) });
+
+const BIOME_START = [1, 30, 60, 90];
+function biomeIndex(st) { return st >= 90 ? 3 : st >= 60 ? 2 : st >= 30 ? 1 : 0; }
+
+/* 각 팔레트: a/b/c = 화면 위→아래 그라디언트, cloudA = 구름 농도,
+ *            star  = 별 밝기, deco/deco2 = 그 바이옴 지형의 주·부 색 */
+const BIOMES = [
+  { key: "sky", cloudA: 1.0, palettes: [
+    { name: "낮 하늘", a: "#7ec8f5", b: "#a8e0ff", c: "#dff3ff", cloud: "#ffffff", cloudA: 0.95, star: 0 },
+    { name: "노을",    a: "#ff9a72", b: "#ffc79a", c: "#ffe9d2", cloud: "#ffe0cc", cloudA: 0.9,  star: 0.15 },
+    { name: "밤하늘",  a: "#1e2a55", b: "#3a4280", c: "#6a6aa8", cloud: "#8b93cf", cloudA: 0.45, star: 1 },
+    { name: "오로라",  a: "#0f3a4d", b: "#1d6f72", c: "#3aa78f", cloud: "#8fe8d6", cloudA: 0.4,  star: 0.8 }
+  ]},
+  { key: "forest", cloudA: 0.5, palettes: [
+    { name: "아침 숲", a: "#bcdcc0", b: "#7fb884", c: "#4e8f5c", cloud: "#ffffff", cloudA: 0.7, star: 0,
+      deco: "#5da566", deco2: "#3c7a4a", river: "#9fd9e8" },
+    { name: "한낮 숲", a: "#8fc98a", b: "#57a463", c: "#2f7346", cloud: "#f4fff4", cloudA: 0.6, star: 0,
+      deco: "#469b53", deco2: "#276b3c", river: "#79c8de" },
+    { name: "노을 숲", a: "#d9a06a", b: "#8a8a50", c: "#3f5238", cloud: "#ffd9b0", cloudA: 0.55, star: 0.2,
+      deco: "#6d8a42", deco2: "#3f5a2e", river: "#f0bb85" },
+    { name: "밤 숲",   a: "#1b3326", b: "#12261b", c: "#08150f", cloud: "#5e7a68", cloudA: 0.3, star: 0.9,
+      deco: "#173a25", deco2: "#0d2417", river: "#2c5c72" }
+  ]},
+  { key: "sea", cloudA: 0.7, palettes: [
+    { name: "아침 바다", a: "#bdeaf7", b: "#6cc0dd", c: "#3a8fba", cloud: "#ffffff", cloudA: 0.8, star: 0,
+      deco: "#ffffff", deco2: "#2b7ba6", sand: "#f4e3ba" },
+    { name: "한낮 바다", a: "#8fd9f2", b: "#37a8da", c: "#166a96", cloud: "#ffffff", cloudA: 0.7, star: 0,
+      deco: "#ffffff", deco2: "#0f5c84", sand: "#efd9a8" },
+    { name: "노을 바다", a: "#ffb182", b: "#d9738a", c: "#6a4681", cloud: "#ffd0bb", cloudA: 0.6, star: 0.25,
+      deco: "#ffe6d8", deco2: "#5b3a72", sand: "#e8b98d" },
+    { name: "밤 바다",   a: "#13294a", b: "#0a1a33", c: "#040d1c", cloud: "#5f7196", cloudA: 0.3, star: 1,
+      deco: "#8fb4d6", deco2: "#061223", sand: "#4b4638" }
+  ]},
+  { key: "space", cloudA: 0, palettes: [
+    { name: "성운 지대",   a: "#241a52", b: "#150e34", c: "#07051a", cloud: "#000000", cloudA: 0, star: 1,
+      deco: "#7b5cff", deco2: "#ff6ae8" },
+    { name: "심우주",      a: "#0c0c28", b: "#070718", c: "#02020a", cloud: "#000000", cloudA: 0, star: 1,
+      deco: "#3a5cff", deco2: "#6affe0" },
+    { name: "붉은 성운",   a: "#33122e", b: "#1c0a1e", c: "#07030d", cloud: "#000000", cloudA: 0, star: 1,
+      deco: "#ff4d6a", deco2: "#ffb03a" },
+    { name: "은하 가장자리", a: "#0d2a3f", b: "#071726", c: "#020a12", cloud: "#000000", cloudA: 0, star: 1,
+      deco: "#3ad0ff", deco2: "#a0ffe8" }
+  ]}
+];
+/* 팔레트를 한 줄로 펴 두고 "전체 인덱스" 하나로 크로스페이드한다 */
+const FLAT_SKIES = [];
+BIOMES.forEach((b, bi) => b.palettes.forEach(p => FLAT_SKIES.push(
+  Object.assign({ biome: bi, biomeCloudA: b.cloudA }, p))));
+
+function skyIndex(st) {
+  const bi = biomeIndex(st);
+  const slot = Math.floor((st - BIOME_START[bi]) / 5) % 4;   // 바이옴마다 아침부터 다시
+  return bi * 4 + slot;
+}
+
+const nightStars = [];
+for (let i = 0; i < 70; i++)
+  nightStars.push({ x: rand(0, CW), y: rand(0, CH), r: rand(0.6, 2), ph: rand(0, TAU), sp: rand(1.4, 3.4) });
+/* 우주에서만 쓰는 빠른 시차(parallax) 별 — 앞쪽에서 빠르게 흐른다 */
+const fastStars = [];
+for (let i = 0; i < 40; i++)
+  fastStars.push({ x: rand(0, CW), y: rand(0, CH), r: rand(0.8, 2.4), sp: rand(60, 150) });
+
+/* 숲 : 앞뒤 두 겹으로 흐르는 나무 덩어리 */
+const forestBits = [];
+for (let i = 0; i < 54; i++)
+  forestBits.push({ x: rand(-30, CW + 30), y: rand(-CH, CH), s: rand(13, 27),
+                    far: i % 3 === 0, ph: rand(0, TAU) });
+/* 바다 : 아래로 흘러가는 파도 마루 */
+const waveBits = [];
+for (let i = 0; i < 26; i++)
+  waveBits.push({ x: rand(0, CW), y: rand(-CH, CH), w: rand(24, 74), ph: rand(0, TAU), far: i % 2 === 0 });
+
+function hex2rgb(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+function mixHex(h1, h2, k) {
+  const a = hex2rgb(h1), b = hex2rgb(h2);
+  return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * k) + "," +
+                  Math.round(a[1] + (b[1] - a[1]) * k) + "," +
+                  Math.round(a[2] + (b[2] - a[2]) * k) + ")";
+}
+
+let skyFrom = 0, skyTo = 0, skyMix = 1;
+let bgScroll = 0;                                  // 지형 스크롤 누적치
+function currentSky(dt) {
+  const want = skyIndex(Game.stage);
+  if (want !== skyTo) { skyFrom = skyTo; skyTo = want; skyMix = 0; }
+  if (skyMix < 1) skyMix = Math.min(1, skyMix + dt / 1.4);
+  const A = FLAT_SKIES[skyFrom], B = FLAT_SKIES[skyTo], k = skyMix;
+  return {
+    a: mixHex(A.a, B.a, k), b: mixHex(A.b, B.b, k), c: mixHex(A.c, B.c, k),
+    cloud: mixHex(A.cloud, B.cloud, k),
+    cloudA: A.cloudA + (B.cloudA - A.cloudA) * k,
+    star: A.star + (B.star - A.star) * k,
+    name: FLAT_SKIES[skyTo].name,
+    from: A, to: B, k
+  };
+}
+/* 현재 화면에 보이는 바이옴 이름 (배너용) */
+function currentBiomeName() { return ["하늘", "숲", "바닷가", "우주"][FLAT_SKIES[skyTo].biome]; }
+
+/* ── 숲 : 강 + 나무 캔버스 ──────────────────────────────────────────── */
+function riverX(y) {                                // 굽이치는 강의 중심선
+  const t = y + bgScroll;
+  return CW * 0.5 + Math.sin(t * 0.0052) * 118 + Math.sin(t * 0.0131 + 1.3) * 34;
+}
+function drawForest(pal, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  ctx.fillStyle = pal.river;                        // 강 (뒤쪽 레이어)
+  ctx.globalAlpha = alpha * 0.75;
+  ctx.beginPath();
+  for (let y = -20; y <= CH + 20; y += 20) {
+    const x = riverX(y) - 26 - Math.sin((y + bgScroll) * 0.01) * 8;
+    y === -20 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  for (let y = CH + 20; y >= -20; y -= 20) {
+    const x = riverX(y) + 26 + Math.sin((y + bgScroll) * 0.01) * 8;
+    ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.fill();
+
+  ctx.globalAlpha = alpha;
+  for (const b of forestBits) {                     // 나무 덩어리
+    const s = b.far ? b.s * 0.62 : b.s;
+    const rx = riverX(b.y);
+    if (Math.abs(b.x - rx) < 40) continue;          // 강 위에는 나무가 없다
+    ctx.fillStyle = b.far ? pal.deco2 : pal.deco;
+    ctx.globalAlpha = alpha * (b.far ? 0.75 : 1);
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, s * 0.72, 0, TAU);
+    ctx.arc(b.x + s * 0.62, b.y + s * 0.24, s * 0.56, 0, TAU);
+    ctx.arc(b.x - s * 0.55, b.y + s * 0.3, s * 0.52, 0, TAU);
+    ctx.arc(b.x + s * 0.05, b.y - s * 0.55, s * 0.5, 0, TAU);
+    ctx.fill();
+    if (!b.far) {                                   // 햇빛 받는 윗면
+      ctx.globalAlpha = alpha * 0.28;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(b.x - s * 0.18, b.y - s * 0.42, s * 0.34, 0, TAU); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/* ── 바닷가 : 파도 + 오른쪽 모래사장 ────────────────────────────────── */
+function shoreX(y) {                                // 해안선 (오른쪽에서 굽이친다)
+  const t = y + bgScroll * 0.9;
+  return CW - 96 + Math.sin(t * 0.0061) * 46 + Math.sin(t * 0.0143 + 0.7) * 16;
+}
+function drawSea(pal, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  for (const w of waveBits) {                       // 흰 파도 마루
+    ctx.globalAlpha = alpha * (w.far ? 0.28 : 0.5);
+    ctx.strokeStyle = pal.deco;
+    ctx.lineWidth = w.far ? 1.6 : 2.6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    const half = w.w * (w.far ? 0.6 : 1);
+    for (let i = 0; i <= 8; i++) {
+      const px = w.x - half + (2 * half) * (i / 8);
+      const py = w.y + Math.sin(i * 0.9 + w.ph + Game.timer * 2.2) * 3;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = alpha;                          // 모래사장
+  ctx.fillStyle = pal.sand;
+  ctx.beginPath();
+  ctx.moveTo(CW + 10, -20);
+  for (let y = -20; y <= CH + 20; y += 16) ctx.lineTo(shoreX(y), y);
+  ctx.lineTo(CW + 10, CH + 20);
+  ctx.closePath(); ctx.fill();
+
+  ctx.globalAlpha = alpha * 0.85;                   // 밀려드는 포말
+  ctx.strokeStyle = pal.deco; ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  for (let y = -20; y <= CH + 20; y += 16) {
+    const x = shoreX(y) - 5 - Math.abs(Math.sin(y * 0.05 + Game.timer * 1.6)) * 5;
+    y === -20 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ── 우주 : 성운 + 빠른 별 ──────────────────────────────────────────── */
+function drawSpace(pal, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const t = Game.timer;
+  const nebs = [                                    // 아주 느리게 흐르는 성운 세 덩이
+    { x: CW * 0.22 + Math.sin(t * 0.05) * 18, y: 180, r: 200, c: pal.deco,  a: 0.20 },
+    { x: CW * 0.85 + Math.sin(t * 0.037 + 2) * 22, y: 520, r: 240, c: pal.deco2, a: 0.17 },
+    { x: CW * 0.5 + Math.sin(t * 0.028 + 4) * 26, y: 760, r: 190, c: pal.deco,  a: 0.13 }
+  ];
+  for (const n of nebs) {
+    const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+    g.addColorStop(0, n.c); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = alpha * n.a;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = alpha * 0.9;
+  ctx.fillStyle = "#ffffff";
+  for (const s of fastStars) {                      // 앞쪽에서 빠르게 흐르는 별
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ── 지구 레이어 ────────────────────────────────────────────────────────
+ * 배경(성운·별) 위, 게임 오브젝트 아래에 놓이는 독립 레이어.
+ * 아주 멀리 떠 있는 것처럼 화면을 옆으로 천천히 가로지른다. */
+const Earth = { x: CW * 0.72, y: 250, r: 76, vx: -7.5, on: 0 };
+/* 대륙 실루엣 — 단위원 좌표로 고정해 두어 모양이 매 프레임 흔들리지 않는다 */
+const EARTH_LAND = [
+  [[-0.66,-0.40],[-0.48,-0.60],[-0.22,-0.58],[-0.04,-0.38],[-0.10,-0.18],[-0.26,-0.04],
+   [-0.46,-0.02],[-0.60,-0.14],[-0.72,-0.26]],
+  [[-0.34,0.12],[-0.12,0.04],[0.06,0.20],[0.04,0.42],[-0.08,0.64],[-0.24,0.70],
+   [-0.32,0.52],[-0.40,0.32]],
+  [[0.16,-0.58],[0.40,-0.68],[0.64,-0.52],[0.76,-0.28],[0.62,-0.10],[0.40,-0.06],
+   [0.24,-0.20],[0.12,-0.40]],
+  [[0.32,0.18],[0.54,0.10],[0.72,0.22],[0.74,0.44],[0.58,0.58],[0.40,0.50],[0.30,0.34]]
+];
+/* 꼭짓점 사이를 지나는 부드러운 곡선 — 각진 다각형이 아니라 해안선처럼 보이게 */
+function blobPath(cx, cy, R, poly, k) {
+  const n = poly.length, sc = k === undefined ? 1 : k;
+  const px = i => cx + poly[((i % n) + n) % n][0] * R * sc;
+  const py = i => cy + poly[((i % n) + n) % n][1] * R * sc;
+  ctx.beginPath();
+  ctx.moveTo((px(0) + px(1)) / 2, (py(0) + py(1)) / 2);
+  for (let i = 1; i <= n; i++)
+    ctx.quadraticCurveTo(px(i), py(i), (px(i) + px(i + 1)) / 2, (py(i) + py(i + 1)) / 2);
+  ctx.closePath();
+}
+function updateEarth(dt, visible) {
+  Earth.on += ((visible ? 1 : 0) - Earth.on) * Math.min(1, dt * 1.2);   // 등·퇴장 페이드
+  Earth.x += Earth.vx * dt;
+  Earth.y = 190 + Math.sin(Game.timer * 0.06) * 26;
+  if (Earth.x < -Earth.r - 90) Earth.x = CW + Earth.r + 90;             // 반대편에서 다시 등장
+}
+function drawEarth() {
+  if (Earth.on < 0.01) return;
+  const R = Earth.r, x = Earth.x, y = Earth.y;
+  ctx.save();
+  ctx.globalAlpha = Earth.on;
+
+  const glow = ctx.createRadialGradient(x, y, R * 0.9, x, y, R * 1.5);  // 대기광
+  glow.addColorStop(0, "rgba(120,200,255,.42)");
+  glow.addColorStop(1, "rgba(120,200,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, R * 1.5, 0, TAU); ctx.fill();
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.clip();
+
+  const sea = ctx.createRadialGradient(x - R * 0.35, y - R * 0.38, R * 0.15, x, y, R * 1.15);
+  sea.addColorStop(0, "#6fc8ff"); sea.addColorStop(0.55, "#1f6fc4"); sea.addColorStop(1, "#0a2d5e");
+  ctx.fillStyle = sea;
+  ctx.fillRect(x - R, y - R, R * 2, R * 2);
+
+  for (const poly of EARTH_LAND) {                                      // 대륙
+    ctx.fillStyle = "#4a9a58";
+    blobPath(x, y, R, poly); ctx.fill();
+    ctx.globalAlpha = Earth.on * 0.45;                                  // 안쪽으로 한 겹 밝게
+    ctx.fillStyle = "#7cc478";
+    blobPath(x - R * 0.03, y - R * 0.05, R, poly, 0.82); ctx.fill();
+    ctx.globalAlpha = Earth.on;
+  }
+
+  ctx.save();                                                           // 천천히 흐르는 흰 구름띠
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(255,255,255,.7)"; ctx.shadowBlur = R * 0.1;
+  for (let i = 0; i < 6; i++) {
+    const span = R * 3.0;
+    const dx = ((Game.timer * 4 + i * 97) % span) - span / 2;
+    const yy = y - R * 0.72 + i * R * 0.29;
+    ctx.globalAlpha = Earth.on * 0.42;
+    ctx.beginPath();
+    ctx.ellipse(x + dx, yy, R * (0.30 + (i % 3) * 0.09), R * 0.055, 0.06, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = Earth.on;
+
+  const term = ctx.createLinearGradient(x - R, y - R, x + R, y + R);    // 명암 경계
+  term.addColorStop(0, "rgba(0,0,0,0)");
+  term.addColorStop(0.42, "rgba(0,0,0,0)");
+  term.addColorStop(1, "rgba(2,6,20,.92)");
+  ctx.globalAlpha = Earth.on;
+  ctx.fillStyle = term;
+  ctx.fillRect(x - R, y - R, R * 2, R * 2);
+  ctx.restore();
+
+  ctx.globalAlpha = Earth.on * 0.5;                                     // 가장자리 하이라이트
+  ctx.strokeStyle = "#bfe6ff"; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(x, y, R, -2.5, -0.5); ctx.stroke();
+  ctx.restore();
+}
+
+/* ── 바이옴 장식 한 겹 그리기 ──────────────────────────────────────── */
+function drawBiomeDeco(bi, pal, alpha) {
+  if (alpha <= 0.01) return;
+  if (bi === 1) drawForest(pal, alpha);
+  else if (bi === 2) drawSea(pal, alpha);
+  else if (bi === 3) drawSpace(pal, alpha);
+}
+
+function drawSky(dt) {
+  const sky = currentSky(dt);
+  const boost = Game.state === "playing" ? 1 : 0.45;
+  bgScroll += 120 * boost * dt;                     // 지형 스크롤
+
+  const g = ctx.createLinearGradient(0, 0, 0, CH);
+  g.addColorStop(0, sky.a); g.addColorStop(0.45, sky.b); g.addColorStop(1, sky.c);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CW, CH);
+
+  if (sky.star > 0.02) {                            // 밤·우주의 별
+    for (const st of nightStars) {
+      ctx.globalAlpha = sky.star * (0.35 + Math.abs(Math.sin(Game.timer * st.sp + st.ph)) * 0.65);
+      ctx.fillStyle = "#fff6e0";
+      ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* 지형 요소들의 위치를 프레임당 한 번만 전진시킨다 (두 겹으로 그려도 안전) */
+  for (const b of forestBits) {
+    b.y += (b.far ? 42 : 96) * boost * dt;
+    if (b.y - b.s > CH + 20) { b.y = -b.s - rand(10, 90); b.x = rand(-30, CW + 30); }
+  }
+  for (const w of waveBits) {
+    w.y += (w.far ? 40 : 88) * boost * dt;
+    if (w.y > CH + 10) { w.y = -10; w.x = rand(0, CW); }
+  }
+  for (const s of fastStars) {
+    s.y += s.sp * boost * dt;
+    if (s.y > CH + 4) { s.y = -4; s.x = rand(0, CW); }
+  }
+
+  /* 바이옴이 바뀌는 순간에는 이전 지형과 새 지형을 겹쳐 페이드한다 */
+  const A = FLAT_SKIES[skyFrom], B = FLAT_SKIES[skyTo];
+  if (A.biome === B.biome) drawBiomeDeco(B.biome, B, 1);
+  else { drawBiomeDeco(A.biome, A, 1 - sky.k); drawBiomeDeco(B.biome, B, sky.k); }
+
+  /* 지구 레이어 — 우주 바이옴에서만 서서히 나타난다 */
+  updateEarth(dt, B.biome === 3);
+  drawEarth();
+
+  for (const s of sparks) {                         // 속도감을 주는 흐름선
+    s.y += s.sp * boost * dt;
+    if (s.y > CH + 6) { s.y = -6; s.x = rand(0, CW); }
+    ctx.strokeStyle = "rgba(255,255,255,.45)"; ctx.lineWidth = s.r;
+    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y - 12 * boost); ctx.stroke();
+  }
+
+  const cloudMul = A.biomeCloudA + (B.biomeCloudA - A.biomeCloudA) * sky.k;
+  if (cloudMul > 0.02) {
+    for (const c of clouds) {                       // 위로 지나가는 구름
+      c.y += c.sp * boost * dt;
+      if (c.y - c.s > CH) { c.y = -c.s * 1.6; c.x = rand(0, CW); c.s = rand(26, 62); }
+      ctx.globalAlpha = c.a * 0.9 * sky.cloudA * cloudMul;
+      ctx.fillStyle = sky.cloud;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.s * 0.6, 0, TAU);
+      ctx.arc(c.x + c.s * 0.6, c.y - c.s * 0.2, c.s * 0.46, 0, TAU);
+      ctx.arc(c.x + c.s * 1.15, c.y + c.s * 0.05, c.s * 0.54, 0, TAU);
+      ctx.arc(c.x + c.s * 0.55, c.y + c.s * 0.3, c.s * 0.48, 0, TAU);
+      ctx.fill();
+    }
+  } else {
+    for (const c of clouds) {                       // 우주에서도 위치는 계속 흘려 둔다
+      c.y += c.sp * boost * dt;
+      if (c.y - c.s > CH) { c.y = -c.s * 1.6; c.x = rand(0, CW); c.s = rand(26, 62); }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ── 펫 그리기 (선택 카드와 인게임 공용) ──────────────────────────────── */
+/* ── 우주복 헬멧 ────────────────────────────────────────────────────────
+ * 90스테이지(우주 구간)부터 펫이 쓰고 나온다.
+ * 유리는 반투명이라 안의 귀·수염·코가 그대로 비쳐 고양이/강아지 구분이 유지된다.
+ * (헬멧을 불투명하게 칠하면 둘이 똑같아 보여서 안 된다) */
+function drawHelmet(pet) {
+  const R = 33;
+  ctx.save();
+  ctx.translate(0, -3);
+
+  ctx.fillStyle = "rgba(255,255,255,.95)";              // 목 고리(칼라)
+  ctx.strokeStyle = "#9fb0c9"; ctx.lineWidth = 2;
+  rrect(ctx, -23, 17, 46, 10, 5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = pet.key === "cat" ? "#ff8fbc" : "#ffb03a";   // 펫 색 띠
+  rrect(ctx, -19, 19.5, 38, 4, 2); ctx.fill();
+
+  for (const s of [-1, 1]) {                            // 좌우 산소 결합구
+    ctx.fillStyle = "#cfd8e8"; ctx.strokeStyle = "#8494ad"; ctx.lineWidth = 1.6;
+    rrect(ctx, s * 28 - 4, -6, 8, 13, 3); ctx.fill(); ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#9fb0c9"; ctx.lineWidth = 2;       // 정수리 안테나
+  ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(11, -R + 4); ctx.lineTo(18, -R - 7); ctx.stroke();
+  ctx.fillStyle = "#ff5c72";
+  ctx.shadowColor = "#ff5c72"; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.arc(18, -R - 8, 3, 0, TAU); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const glass = ctx.createRadialGradient(-11, -13, 3, 0, 0, R);   // 유리 돔
+  glass.addColorStop(0, "rgba(255,255,255,.36)");
+  glass.addColorStop(0.55, "rgba(175,225,255,.16)");
+  glass.addColorStop(1, "rgba(120,190,235,.3)");
+  ctx.fillStyle = glass;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 3.4; // 테두리
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = "rgba(150,200,235,.9)"; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(0, 0, R - 3.2, 0, TAU); ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 4;   // 반사 광택
+  ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(0, 0, R - 8, Math.PI * 1.08, Math.PI * 1.42); ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, R - 15, Math.PI * 1.12, Math.PI * 1.3); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPet(pet, x, y, scale, flap, tilt, flying, mood, space) {
+  const s = scale;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(tilt || 0);
+  ctx.scale(s, s);
+
+  if (flying) {
+    /* 제트 불꽃 — 넓은 삼각형 하나로 그리면 "콘"처럼 보인다.
+     * 바깥(주황)과 안쪽(노랑) 두 겹을 좁고 뾰족하게 겹쳐야 불꽃으로 읽힌다. */
+    const f = 1 + Math.sin(flap) * 0.3;
+    const outer = ctx.createLinearGradient(0, 14, 0, 14 + 30 * f);
+    outer.addColorStop(0, "rgba(255,170,70,.34)");
+    outer.addColorStop(0.45, "rgba(255,120,60,.18)");
+    outer.addColorStop(1, "rgba(255,110,60,0)");
+    ctx.fillStyle = outer;
+    ctx.beginPath();
+    ctx.moveTo(-6.5, 13);
+    ctx.quadraticCurveTo(-3, 20 + 16 * f, 0, 16 + 30 * f);
+    ctx.quadraticCurveTo(3, 20 + 16 * f, 6.5, 13);
+    ctx.closePath(); ctx.fill();
+
+    const inner = ctx.createLinearGradient(0, 14, 0, 14 + 17 * f);
+    inner.addColorStop(0, "rgba(255,248,210,.6)");
+    inner.addColorStop(1, "rgba(255,214,106,0)");
+    ctx.fillStyle = inner;
+    ctx.beginPath();
+    ctx.moveTo(-3.2, 13);
+    ctx.quadraticCurveTo(-1.6, 18 + 8 * f, 0, 14 + 17 * f);
+    ctx.quadraticCurveTo(1.6, 18 + 8 * f, 3.2, 13);
+    ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = "rgba(60,80,110,.16)";               // 지상 그림자는 카드에서만
+    ctx.beginPath(); ctx.ellipse(0, 20, 16, 4.5, 0, 0, TAU); ctx.fill();
+  }
+
+  const bg = ctx.createLinearGradient(0, -26, 0, 20);    // 몸통
+  bg.addColorStop(0, "#ffffff"); bg.addColorStop(0.4, pet.body); bg.addColorStop(1, pet.body2);
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = pet.line; ctx.lineWidth = 2.2;
+
+  if (pet.key === "cat") {
+    ctx.beginPath();                                     // 쫑긋한 귀
+    ctx.moveTo(-16, -14); ctx.lineTo(-20, -30); ctx.lineTo(-4, -21); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(16, -14); ctx.lineTo(20, -30); ctx.lineTo(4, -21); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#ff9ec4";
+    ctx.beginPath(); ctx.moveTo(-15, -16); ctx.lineTo(-17.5, -25); ctx.lineTo(-8, -20); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(15, -16); ctx.lineTo(17.5, -25); ctx.lineTo(8, -20); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = bg;
+  } else {
+    ctx.beginPath();                                     // 처진 귀
+    ctx.ellipse(-19, -8, 7.5, 13, 0.25, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(19, -8, 7.5, 13, -0.25, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+
+  ctx.fillStyle = bg;                                    // 얼굴 · 몸
+  ctx.beginPath(); ctx.ellipse(0, -2, 19, 20, 0, 0, TAU); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,.85)";               // 하이라이트
+  ctx.beginPath(); ctx.ellipse(-7, -12, 6.5, 4.5, -0.5, 0, TAU); ctx.fill();
+
+  if (mood === "happy") {                                // 활짝 웃는 눈 (∩ ∩) + 미소
+    ctx.strokeStyle = "#3d3145"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(-7, -2.5, 3.6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc( 7, -2.5, 3.6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(0, 4, 5.5, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+  } else {
+    ctx.fillStyle = "#3d3145";                           // 눈
+    ctx.beginPath(); ctx.arc(-7, -3, 3.1, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(7, -3, 3.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(-6, -4.4, 1.2, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -4.4, 1.2, 0, TAU); ctx.fill();
+  }
+
+  ctx.fillStyle = "rgba(255,150,180,.5)";                // 볼터치
+  ctx.beginPath(); ctx.ellipse(-13, 3, 4.2, 2.8, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(13, 3, 4.2, 2.8, 0, 0, TAU); ctx.fill();
+
+  if (pet.key === "cat") {
+    ctx.fillStyle = "#ff7ba6";                           // 코
+    ctx.beginPath();
+    ctx.moveTo(0, 3); ctx.lineTo(-3, 0.5); ctx.lineTo(3, 0.5); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(90,70,90,.55)"; ctx.lineWidth = 1.2;
+    for (const sgn of [-1, 1]) {                         // 수염
+      ctx.beginPath();
+      ctx.moveTo(sgn * 8, 2); ctx.lineTo(sgn * 20, -1);
+      ctx.moveTo(sgn * 8, 5); ctx.lineTo(sgn * 20, 5);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = "#5b4632";                           // 큼직한 코
+    ctx.beginPath(); ctx.ellipse(0, 2.5, 4.6, 3.6, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#5b4632"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, 8); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-3.5, 8, 3.5, 0, Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(3.5, 8, 3.5, 0, Math.PI); ctx.stroke();
+    ctx.fillStyle = "#ff8fa8";                           // 혀
+    ctx.beginPath(); ctx.ellipse(0, 12, 3.6, 2.6, 0, 0, TAU); ctx.fill();
+  }
+
+  if (space) drawHelmet(pet);                          // 우주 구간의 헬멧
+
+  ctx.restore();
+}
+
+/* ── 미사일 ────────────────────────────────────────────────────────────── */
+/* ── 유도탄 표적 배분 ──────────────────────────────────────────────────
+ * 한 번에 쏜 탄들은 거의 같은 자리에서 출발하므로 "가장 가까운 적"을
+ * 고르면 전부 같은 놈에게 몰린다. 한 마리에 과잉 화력을 쏟는 동안
+ * 바로 옆의 적은 그대로 지나가 버렸다.
+ * → 적마다 "이미 날아오고 있는 피해량(inbound)"을 세어 두고, 그 값이 남은
+ *   체력 이상인 적은 후보에서 뺀다. 자연히 탄들이 각자 다른 적을 문다.
+ *   (모든 적이 이미 처리된 상태라면 그냥 가장 가까운 적으로 간다) */
+function releaseLock(b) {
+  if (b.lock) { b.lock.inbound = Math.max(0, (b.lock.inbound || 0) - b.dmg); b.lock = null; }
+}
+function setLock(b, e) {
+  releaseLock(b);
+  b.lock = e;
+  if (e) e.inbound = (e.inbound || 0) + b.dmg;
+}
+function acquireTarget(b) {
+  let best = null, bd = 1e9;                 // 아직 여유가 있는 적 중 가장 가까운 놈
+  let near = null, nd = 1e9;                 // 여유를 따지지 않은 최근접 (예비)
+  for (const e of Game.enemies) {
+    if (e.dead || e.y < -e.r || e.y > b.y + 30) continue;   // 화면 밖 · 이미 지나친 적
+    const d = dist2(b.x, b.y, e.x, e.y);
+    if (d < nd) { nd = d; near = e; }
+    if ((e.inbound || 0) >= e.hp) continue;                 // 이미 죽을 만큼 탄이 몰렸다
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best || near;
+}
+
+function drawBullet(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  if (b.kind === "paw") {
+    ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);
+    ctx.shadowColor = "rgba(255,140,190,.85)"; ctx.shadowBlur = 10;
+    ctx.fillStyle = "#ff8fbc";
+    ctx.beginPath(); ctx.ellipse(0, 1.5, 6.2, 5.2, 0, 0, TAU); ctx.fill();   // 발바닥 패드
+    for (const [dx, dy, r] of [[-5.6, -4.6, 2.5], [-2, -7.4, 2.6], [2, -7.4, 2.6], [5.6, -4.6, 2.5]])
+      { ctx.beginPath(); ctx.arc(dx, dy, r, 0, TAU); ctx.fill(); }           // 발가락
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.6)";
+    ctx.beginPath(); ctx.ellipse(-1.6, 0, 2.2, 1.6, 0, 0, TAU); ctx.fill();
+  } else if (b.kind === "d_spread") {                     // 방사형 : 작은 에너지 탄
+    ctx.shadowColor = b.col || "#8fd9ff"; ctx.shadowBlur = 10;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(0, 0, 4.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = b.col || "#8fd9ff";
+    ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+  } else if (b.kind === "d_focus") {                      // 집중형 : 길쭉한 관통형 빔
+    ctx.shadowColor = "#6ff0ff"; ctx.shadowBlur = 12;
+    const g = ctx.createLinearGradient(0, -14, 0, 10);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#6ff0ff"); g.addColorStop(1, "rgba(110,240,255,0)");
+    ctx.fillStyle = g;
+    rrect(ctx, -3.4, -14, 6.8, 24, 3.4); ctx.fill();
+    ctx.shadowBlur = 0;
+  } else if (b.kind === "d_missile") {                    // 미사일형 : 유도 로켓
+    /* 예전엔 흰 몸통이라 하늘 배경에 묻혔다. 주황 동체 + 빨간 날개 + 노란 탄두로
+     * 색을 확실히 주고, 크기도 1.6배 키웠다. 뒤로는 연기 꼬리를 남긴다. */
+    const ang = Math.atan2(b.vy, b.vx) + Math.PI / 2;
+    ctx.save();                                            // 연기 꼬리 (회전 전 좌표계)
+    const ux = -Math.cos(ang - Math.PI / 2), uy = -Math.sin(ang - Math.PI / 2);
+    for (let i = 1; i <= 4; i++) {
+      ctx.globalAlpha = 0.28 - i * 0.055;
+      ctx.fillStyle = "#e6ecf5";
+      ctx.beginPath(); ctx.arc(ux * i * 9 + Math.sin(b.t * 20 + i) * 2, uy * i * 9, 3 + i * 1.6, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    ctx.rotate(ang);
+    const f = 1 + Math.sin(Game.timer * 32) * 0.35;
+    const fg = ctx.createLinearGradient(0, 9, 0, 9 + 22 * f);   // 배기 불꽃
+    fg.addColorStop(0, "rgba(255,240,160,.95)"); fg.addColorStop(0.5, "rgba(255,150,60,.7)");
+    fg.addColorStop(1, "rgba(255,90,40,0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, 9); ctx.quadraticCurveTo(0, 12 + 22 * f, 4.5, 9); ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = "#ff4d6a";                             // 꼬리 날개
+    ctx.strokeStyle = "#8f1f33"; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-5, 3); ctx.lineTo(-11, 11); ctx.lineTo(-5, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5, 3); ctx.lineTo(11, 11); ctx.lineTo(5, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    const bodyG = ctx.createLinearGradient(-6, 0, 6, 0);   // 주황 동체
+    bodyG.addColorStop(0, "#ffb070"); bodyG.addColorStop(0.5, "#ff7a2e"); bodyG.addColorStop(1, "#c94d12");
+    ctx.fillStyle = bodyG; ctx.strokeStyle = "#7a2d08"; ctx.lineWidth = 1.5;
+    rrect(ctx, -6, -8, 12, 18, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#ffffff";                             // 동체 띠
+    ctx.fillRect(-6, -1, 12, 3);
+
+    ctx.fillStyle = "#ffd76a"; ctx.strokeStyle = "#a8701a";  // 노란 탄두
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.quadraticCurveTo(6.5, -10, 6, -7); ctx.lineTo(-6, -7);
+    ctx.quadraticCurveTo(-6.5, -10, 0, -18); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.7)";                // 하이라이트
+    ctx.beginPath(); ctx.ellipse(-2.5, -6, 1.4, 5, 0, 0, TAU); ctx.fill();
+  } else {
+    ctx.rotate(b.spin);
+    ctx.shadowColor = "rgba(255,220,120,.9)"; ctx.shadowBlur = 10;
+    ctx.fillStyle = "#fff3c9";
+    ctx.strokeStyle = "#e0ac3a"; ctx.lineWidth = 1.6;
+    rrect(ctx, -3, -8, 6, 16, 3); ctx.fill(); ctx.stroke();                  // 뼈대
+    for (const dy of [-8, 8])
+      for (const dx of [-4.2, 4.2]) {
+        ctx.beginPath(); ctx.arc(dx, dy, 3.6, 0, TAU); ctx.fill(); ctx.stroke();
+      }
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+}
+
+/* ── 드론 ──────────────────────────────────────────────────────────────── */
+function drawDrones() {
+  const p = Game.player, sp = droneSpec();
+  if (!sp) return;
+  const pet = Game.pet, t = Game.timer;
+  const accent = DRONE_COLORS[sp.form];
+
+  for (const d of droneSlots()) {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+
+    ctx.globalAlpha = 0.35;                              // 프로펠러
+    ctx.fillStyle = "#cfe4f5";
+    ctx.beginPath();
+    ctx.ellipse(0, -11, 15 * Math.abs(Math.cos(t * 20)) + 3, 2.4, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = "#4a5570";                           // 프로펠러 축
+    rrect(ctx, -1.6, -12, 3.2, 6, 1.5); ctx.fill();
+
+    const g = ctx.createLinearGradient(0, -9, 0, 9);     // 몸체
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.4, pet.body); g.addColorStop(1, pet.body2);
+    ctx.fillStyle = g;
+    ctx.strokeStyle = pet.line; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, TAU); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = "#1b2233";                           // 바이저
+    rrect(ctx, -6.5, -3.5, 13, 6, 3); ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.beginPath(); ctx.arc(-2.6, -0.5, 1.7, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(2.6, -0.5, 1.7, 0, TAU); ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,.6)";              // 하이라이트
+    ctx.beginPath(); ctx.ellipse(-3.5, -6, 3, 2, -0.5, 0, TAU); ctx.fill();
+
+    if (sp.form === 1) {                                 // 집중형: 총열
+      ctx.fillStyle = "#c9d6ea";
+      rrect(ctx, -2, -14, 4, 6, 1.6); ctx.fill();
+    } else if (sp.form === 2) {                          // 미사일형: 측면 포드
+      ctx.fillStyle = "#c9d6ea";
+      rrect(ctx, -9, 4, 5, 7, 2); ctx.fill();
+      rrect(ctx, 4, 4, 5, 7, 2); ctx.fill();
+    } else if (sp.form === 3) {                          // 폭풍형: 포드 + 테슬라 코일
+      ctx.fillStyle = "#c9d6ea";
+      rrect(ctx, -9, 4, 5, 7, 2); ctx.fill();            // 미사일 포드
+      rrect(ctx, 4, 4, 5, 7, 2); ctx.fill();
+      rrect(ctx, -10, -9, 3.5, 11, 1.5); ctx.fill();
+      rrect(ctx, 6.5, -9, 3.5, 11, 1.5); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.arc(-8.2, -9.5, 2.4, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(8.2, -9.5, 2.4, 0, TAU); ctx.fill();
+      ctx.save();                                        // 코일 사이를 튀는 작은 아크
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.4;
+      ctx.shadowColor = accent; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(-8, -10);
+      for (let i = 1; i < 5; i++) ctx.lineTo(-8 + i * 3.2, -10 - rand(-3, 3));
+      ctx.lineTo(8, -10); ctx.stroke();
+      ctx.restore();
+    }
+
+    for (let i = 0; i < 3; i++) {                        // 랭크 표시 (아래 점 3개)
+      ctx.fillStyle = i < sp.rank ? accent : "rgba(255,255,255,.28)";
+      ctx.beginPath(); ctx.arc(-5 + i * 5, 13, 1.7, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+/* ── 적 ────────────────────────────────────────────────────────────────── */
+/* 날개 한 짝 — 어깨를 축으로 회전시켜 퍼덕이게 한다 */
+function drawWing(r, side, ang, skin) {
+  ctx.save();
+  ctx.translate(side * r * 0.34, -r * 0.06);
+  ctx.rotate(side * ang);
+  const g = ctx.createLinearGradient(0, -r * 0.4, side * r * 1.4, r * 0.3);
+  g.addColorStop(0, skin.body);
+  g.addColorStop(1, skin.wing);
+  ctx.fillStyle = g;
+  ctx.strokeStyle = skin.wing; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(side * r * 0.85, -r * 0.62, side * r * 1.45, -r * 0.08);
+  ctx.quadraticCurveTo(side * r * 0.95, r * 0.12, side * r * 1.15, r * 0.34);
+  ctx.quadraticCurveTo(side * r * 0.55, r * 0.30, 0, r * 0.22);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 1.2;
+  ctx.beginPath();                                   // 깃털 결
+  ctx.moveTo(side * r * 0.25, r * 0.02);
+  ctx.quadraticCurveTo(side * r * 0.75, -r * 0.16, side * r * 1.2, -r * 0.02);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ── 보스: 메카 부엉이 ────────────────────────────────────────────────
+ * 일반 적(둥글고 귀여운 새)과 실루엣부터 다르게 간다.
+ * 각진 장갑판 · 회전 로터 · 바이저 눈 · 가슴 코어 · 추진기 화염.
+ * 체력이 절반 아래로 떨어지면 코어와 눈이 붉게 변하며 경고등이 빨라진다. */
+function drawBoss(e) {
+  const r = e.r, k = clamp(e.hp / e.maxHp, 0, 1);
+  const rage = k < 0.5;
+  const eye = rage ? "#ff5c6c" : "#6ff0ff";
+  const t = Game.timer;
+
+  ctx.save();
+  ctx.translate(e.x, e.y + Math.sin(t * 1.8) * 3);
+  ctx.rotate(Math.sin(t * 0.9) * 0.05);
+  if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 26 * e.hurt; }
+
+  // 추진기 화염
+  for (const sx of [-0.42, 0.42]) {
+    const f = 1 + Math.sin(t * 22 + sx) * 0.3;
+    const fg = ctx.createLinearGradient(0, r * 0.7, 0, r * 0.7 + r * 0.7 * f);
+    fg.addColorStop(0, "rgba(255,220,120,.85)");
+    fg.addColorStop(0.5, "rgba(255,130,60,.45)");
+    fg.addColorStop(1, "rgba(255,110,60,0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(sx * r - r * 0.13, r * 0.66);
+    ctx.quadraticCurveTo(sx * r, r * 0.7 + r * 0.8 * f, sx * r + r * 0.13, r * 0.66);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // 회전 로터 (좌우 2쌍)
+  for (const sx of [-1, 1]) {
+    ctx.save();
+    ctx.translate(sx * r * 0.86, -r * 0.16);
+    ctx.fillStyle = "#4a5570";
+    rrect(ctx, -r * 0.1, -r * 0.1, r * 0.2, r * 0.44, r * 0.06); ctx.fill();   // 로터 축
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = "#9fb4d6";
+    for (let i = 0; i < 3; i++) {                                             // 블레이드
+      ctx.save();
+      ctx.rotate(t * 16 * sx + i * (TAU / 3));
+      ctx.beginPath(); ctx.ellipse(r * 0.34, 0, r * 0.34, r * 0.055, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#2f3a52";
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.1, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  // 각진 장갑 본체
+  const body = ctx.createLinearGradient(0, -r, 0, r);
+  body.addColorStop(0, "#8fa3c4"); body.addColorStop(0.45, "#5d6d90"); body.addColorStop(1, "#39445e");
+  ctx.fillStyle = body;
+  ctx.strokeStyle = "#232a3d"; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.72, -r * 0.34);
+  ctx.lineTo(-r * 0.34, -r * 0.82);
+  ctx.lineTo(r * 0.34, -r * 0.82);
+  ctx.lineTo(r * 0.72, -r * 0.34);
+  ctx.lineTo(r * 0.6, r * 0.5);
+  ctx.lineTo(0, r * 0.82);
+  ctx.lineTo(-r * 0.6, r * 0.5);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // 장갑 패널 라인 · 경고 스트라이프
+  ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.5, -r * 0.1); ctx.lineTo(r * 0.5, -r * 0.1);
+  ctx.moveTo(-r * 0.4, r * 0.3); ctx.lineTo(r * 0.4, r * 0.3);
+  ctx.stroke();
+  ctx.fillStyle = rage ? "rgba(255,92,108,.85)" : "rgba(255,201,60,.8)";
+  for (let i = -2; i <= 2; i++)
+    ctx.fillRect(i * r * 0.2 - r * 0.05, r * 0.36, r * 0.1, r * 0.1);
+
+  // 바이저와 눈
+  ctx.fillStyle = "#1b2233";
+  rrect(ctx, -r * 0.56, -r * 0.56, r * 1.12, r * 0.42, r * 0.14); ctx.fill();
+  ctx.save();
+  ctx.shadowColor = eye; ctx.shadowBlur = 16;
+  ctx.fillStyle = eye;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(sx * r * 0.26, -r * 0.35, r * 0.15, r * 0.1, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 가슴 코어 (약점처럼 보이게 맥동)
+  const pulse = 1 + Math.sin(t * (rage ? 9 : 4.5)) * 0.12;
+  ctx.save();
+  ctx.translate(0, r * 0.06);
+  ctx.scale(pulse, pulse);
+  const core = ctx.createRadialGradient(0, 0, r * 0.03, 0, 0, r * 0.26);
+  core.addColorStop(0, "#ffffff");
+  core.addColorStop(0.45, eye);
+  core.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = core;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.26, 0, TAU); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.17, 0, TAU); ctx.stroke();
+  ctx.restore();
+
+  // 안테나 + 점멸 경고등
+  ctx.strokeStyle = "#2f3a52"; ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.82); ctx.lineTo(0, -r * 1.06); ctx.stroke();
+  const blink = Math.sin(t * (rage ? 14 : 7)) > 0;
+  ctx.fillStyle = blink ? "#ff5c6c" : "rgba(255,92,108,.3)";
+  ctx.beginPath(); ctx.arc(0, -r * 1.1, r * 0.07, 0, TAU); ctx.fill();
+
+  // 어깨 포드
+  ctx.fillStyle = "#46527040".slice(0, 7);
+  for (const sx of [-1, 1]) {
+    ctx.fillStyle = "#465270";
+    rrect(ctx, sx * r * 0.58 - r * 0.12, -r * 0.5, r * 0.24, r * 0.3, r * 0.08);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * TIER 1 : 분노한 야수 군단 (30스테이지~)
+ * ───────────────────────────────────────────────────────────────────────
+ * 디자인 규칙 — "둥근 곳을 전부 각지게, 표정을 전부 아래로".
+ *  · 실루엣  : 원/타원 → 다각형, 어깨와 등에 가시
+ *  · 눈      : 동그란 점 → 사선으로 찢어진 발광 슬릿 + 두꺼운 V자 눈썹
+ *  · 입      : 미소 → 지그재그 송곳니
+ *  · 색      : 파스텔 → 어둡게 가라앉은 적/보라/독초색 + 붉은 오라
+ * ═════════════════════════════════════════════════════════════════════ */
+
+/* 화가 난 눈 — 사선 슬릿 + 눈썹. 멀리서도 "분노"가 한눈에 읽히도록. */
+function angryEyes(r, col, glow, ox, oy) {
+  const ex = ox === undefined ? r * 0.34 : ox;
+  const ey = oy === undefined ? -r * 0.10 : oy;
+  ctx.save();
+  ctx.shadowColor = glow; ctx.shadowBlur = r * 0.55;
+  ctx.fillStyle = col;
+  for (const s of [-1, 1]) {
+    ctx.save();
+    ctx.translate(s * ex, ey);
+    ctx.rotate(s * 0.6);                       // 안쪽이 아래로 처진 사선
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.26, 0);
+    ctx.lineTo(r * 0.20, -r * 0.14);
+    ctx.lineTo(r * 0.20, r * 0.14);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.strokeStyle = "#1c0a10";                 // 미간을 찌푸린 두꺼운 눈썹
+  ctx.lineWidth = Math.max(2, r * 0.13);
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-ex * 1.9, ey - r * 0.42); ctx.lineTo(-ex * 0.3, ey - r * 0.14);
+  ctx.moveTo( ex * 1.9, ey - r * 0.42); ctx.lineTo( ex * 0.3, ey - r * 0.14);
+  ctx.stroke();
+}
+
+/* 지그재그 송곳니 입 */
+function fangMouth(r, y, w, n, col) {
+  ctx.fillStyle = col || "#2a0810";
+  ctx.beginPath();
+  ctx.moveTo(-w, y);
+  for (let i = 0; i < n; i++) {
+    ctx.lineTo(-w + (2 * w) * (i + 0.5) / n, y + r * 0.26);
+    ctx.lineTo(-w + (2 * w) * (i + 1) / n, y);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+/* 맹금류의 각진 날개 — 끝이 톱니처럼 갈라진다 */
+function drawRaptorWing(r, side, ang, skin) {
+  ctx.save();
+  ctx.translate(side * r * 0.32, -r * 0.05);
+  ctx.rotate(side * ang);
+  const g = ctx.createLinearGradient(0, -r * 0.4, side * r * 1.5, r * 0.3);
+  g.addColorStop(0, skin.body); g.addColorStop(1, skin.wing);
+  ctx.fillStyle = g; ctx.strokeStyle = skin.edge; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.10);
+  ctx.lineTo(side * r * 0.78, -r * 0.66);
+  ctx.lineTo(side * r * 1.58, -r * 0.24);
+  ctx.lineTo(side * r * 1.18,  r * 0.02);
+  ctx.lineTo(side * r * 1.44,  r * 0.30);
+  ctx.lineTo(side * r * 0.94,  r * 0.16);
+  ctx.lineTo(side * r * 1.04,  r * 0.54);
+  ctx.lineTo(side * r * 0.44,  r * 0.20);
+  ctx.lineTo(0, r * 0.24);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawEnemyT1(e, flapA) {
+  const r = e.r, skin = e.skin || RAGE_SKINS[0];
+
+  /* 공통 : 몸을 감싼 분노의 오라(맥동) */
+  const auraPulse = 0.22 + Math.sin(Game.timer * 6 + (e.wob || 0)) * 0.07;
+
+  if (e.type === "bird" || e.elite) {
+    /* ── 맹금 : 방패꼴 몸통에 갈고리 부리 ── */
+    ctx.translate(e.x, e.y + flapA * r * 0.08);
+    ctx.save();
+    ctx.globalAlpha = auraPulse; ctx.fillStyle = skin.aura;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
+    ctx.restore();
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    drawRaptorWing(r, -1, -0.10 - flapA * 0.9, skin);
+    drawRaptorWing(r,  1, -0.10 - flapA * 0.9, skin);
+
+    ctx.fillStyle = skin.wing;                         // 세 갈래 꼬리깃
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.30, -r * 0.45);
+    ctx.lineTo(-r * 0.17, -r * 1.14);
+    ctx.lineTo(0, -r * 0.66);
+    ctx.lineTo(r * 0.17, -r * 1.14);
+    ctx.lineTo(r * 0.30, -r * 0.45);
+    ctx.closePath(); ctx.fill();
+
+    const g = ctx.createLinearGradient(0, -r, 0, r);    // 몸통 : 아래가 뾰족한 방패
+    g.addColorStop(0, skin.body); g.addColorStop(1, skin.body2);
+    ctx.fillStyle = g; ctx.strokeStyle = skin.edge; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 0.90);
+    ctx.lineTo(r * 0.84, -r * 0.32);
+    ctx.lineTo(r * 0.52, r * 0.58);
+    ctx.lineTo(0, r * 0.96);
+    ctx.lineTo(-r * 0.52, r * 0.58);
+    ctx.lineTo(-r * 0.84, -r * 0.32);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = skin.edge;                          // 어깨 가시
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * r * 0.52, -r * 0.60);
+      ctx.lineTo(s * r * 0.98, -r * 0.92);
+      ctx.lineTo(s * r * 0.70, -r * 0.26);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = skin.beak;                          // 갈고리 부리
+    ctx.strokeStyle = "#7d3a10"; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.26, r * 0.18);
+    ctx.lineTo(0, r * 0.80);
+    ctx.lineTo(r * 0.26, r * 0.18);
+    ctx.lineTo(0, r * 0.34);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    angryEyes(r, skin.eye, skin.glow, r * 0.34, -r * 0.14);
+
+    if (e.elite) {                                      // 엘리트는 거대한 뿔
+      ctx.fillStyle = "#efe0c6"; ctx.strokeStyle = "#7a5a30"; ctx.lineWidth = 2;
+      for (const s of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(s * r * 0.32, -r * 0.70);
+        ctx.quadraticCurveTo(s * r * 1.10, -r * 1.10, s * r * 0.82, -r * 1.60);
+        ctx.quadraticCurveTo(s * r * 0.74, -r * 0.98, s * r * 0.18, -r * 0.56);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+
+  } else if (e.type === "slime") {
+    /* ── 용암 슬라임 : 굳은 암석 껍질 사이로 용암이 흐른다 ── */
+    const sq = 1 + Math.sin(e.flap * 0.7) * 0.11;
+    ctx.translate(e.x, e.y + r * (1 - 1 / sq) * 0.5);
+    ctx.scale(1 / sq, sq);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, "#8c2a22"); g.addColorStop(0.55, "#4a1010"); g.addColorStop(1, "#1c0606");
+    ctx.fillStyle = g; ctx.strokeStyle = "#0d0303"; ctx.lineWidth = 2;
+    ctx.beginPath();                                   // 각진 바위 덩어리
+    ctx.moveTo(-r * 0.98, r * 0.62);
+    ctx.lineTo(-r * 0.72, -r * 0.42);
+    ctx.lineTo(-r * 0.24, -r * 0.94);
+    ctx.lineTo(r * 0.34, -r * 0.88);
+    ctx.lineTo(r * 0.86, -r * 0.30);
+    ctx.lineTo(r * 0.98, r * 0.62);
+    ctx.lineTo(r * 0.42, r * 0.98);
+    ctx.lineTo(-r * 0.42, r * 0.98);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "#3a0d0d";                          // 등에 솟은 가시
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * r * 0.42 - r * 0.14, -r * 0.78);
+      ctx.lineTo(i * r * 0.42, -r * 1.34);
+      ctx.lineTo(i * r * 0.42 + r * 0.14, -r * 0.78);
+      ctx.closePath(); ctx.fill();
+    }
+
+    ctx.save();                                         // 용암 균열 (맥동하는 빛)
+    ctx.globalAlpha = 0.75 + Math.sin(Game.timer * 5 + e.wob) * 0.2;
+    ctx.strokeStyle = "#ff7a1a"; ctx.lineWidth = Math.max(1.6, r * 0.09);
+    ctx.shadowColor = "#ff5a00"; ctx.shadowBlur = r * 0.6; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.72, r * 0.10); ctx.lineTo(-r * 0.30, r * 0.44);
+    ctx.lineTo(-r * 0.02, r * 0.16); ctx.lineTo(r * 0.44, r * 0.52);
+    ctx.moveTo(r * 0.62, -r * 0.44); ctx.lineTo(r * 0.24, -r * 0.16);
+    ctx.stroke();
+    ctx.restore();
+
+    angryEyes(r, "#ffd23a", "#ff7a00", r * 0.36, -r * 0.16);
+    fangMouth(r, r * 0.36, r * 0.44, 4, "#1a0404");
+
+  } else {
+    /* ── 악귀 : 유령이 뿔과 송곳니를 얻고 검게 물들었다 ── */
+    ctx.translate(e.x, e.y + Math.sin(e.wob * 1.6) * 3);
+    ctx.rotate(Math.sin(e.wob * 0.9) * 0.12);
+    ctx.save();
+    ctx.globalAlpha = auraPulse * 0.9; ctx.fillStyle = "rgba(120,40,200,.55)";
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, TAU); ctx.fill();
+    ctx.restore();
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, "#7a4fa8"); g.addColorStop(1, "#1c0a2c");
+    ctx.fillStyle = g; ctx.strokeStyle = "#0d0416"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.96, r * 0.14);                    // 각진 어깨
+    ctx.lineTo(-r * 0.66, -r * 0.74);
+    ctx.lineTo(0, -r * 1.00);
+    ctx.lineTo(r * 0.66, -r * 0.74);
+    ctx.lineTo(r * 0.96, r * 0.14);
+    const tips = 5, w = r * 0.96;                       // 갈기갈기 찢어진 아랫자락
+    for (let i = 0; i <= tips; i++) {
+      const px = w - (2 * w) * (i / tips);
+      const py = r * 0.72 + (i % 2 ? r * 0.42 : -r * 0.10)
+               + Math.sin(e.flap * 1.1 + i) * r * 0.12;
+      ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "#120520";                          // 머리 위 두 개의 뿔
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * r * 0.30, -r * 0.86);
+      ctx.lineTo(s * r * 0.62, -r * 1.46);
+      ctx.lineTo(s * r * 0.66, -r * 0.74);
+      ctx.closePath(); ctx.fill();
+    }
+
+    angryEyes(r, "#ff5c3a", "#ff2a00", r * 0.36, -r * 0.20);
+    fangMouth(r, r * 0.26, r * 0.40, 4, "#0d0212");
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * TIER 2 : 보이드 결정체 (60스테이지~)
+ * ───────────────────────────────────────────────────────────────────────
+ * 여기서부터는 아예 "생물"을 버린다.
+ *  · 실루엣  : 완전한 기하 도형(델타/구/육각결정)과 회전하는 궤도 링
+ *  · 색      : 거의 검은 본체 + 단 하나의 네온 발광색 (시안/마젠타/라임)
+ *  · 표정    : 눈이 아니라 '코어'가 맥동한다. 사선 슬릿만 남겨 냉랭함 유지
+ * ═════════════════════════════════════════════════════════════════════ */
+
+/* 회전하는 에너지 궤도 링 */
+function voidRing(r, rx, ry, rot, col, alpha, lw) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = col; ctx.lineWidth = lw;
+  ctx.shadowColor = col; ctx.shadowBlur = r * 0.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, rot, 0, TAU); ctx.stroke();
+  ctx.restore();
+}
+
+/* 맥동하는 코어 (마름모) */
+function voidCore(r, size, col, core, t, oy) {
+  const k = size * (1 + Math.sin(t * 7) * 0.12), y = oy || 0;
+  ctx.save();
+  ctx.shadowColor = col; ctx.shadowBlur = r * 0.9;
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.moveTo(0, y - k); ctx.lineTo(k * 0.7, y); ctx.lineTo(0, y + k); ctx.lineTo(-k * 0.7, y);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemyT2(e, flapA) {
+  const r = e.r, sk = e.skin || VOID_SKINS[0], t = Game.timer + (e.wob || 0);
+
+  if (e.type === "bird" || e.elite) {
+    /* ── 인터셉터 : 아래를 향한 델타 기체 + 좌우 에너지 블레이드 ── */
+    ctx.translate(e.x, e.y + flapA * r * 0.05);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+    voidRing(r, r * 1.55, r * 0.34, Math.sin(e.flap) * 0.55, sk.neon, 0.55, 2);
+
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, sk.dark); g.addColorStop(1, sk.dark2);
+    ctx.fillStyle = g; ctx.strokeStyle = sk.neon; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, r * 1.06);                            // 뾰족한 기수(아래)
+    ctx.lineTo(r * 1.10, -r * 0.46);
+    ctx.lineTo(r * 0.40, -r * 0.30);
+    ctx.lineTo(0, -r * 1.00);
+    ctx.lineTo(-r * 0.40, -r * 0.30);
+    ctx.lineTo(-r * 1.10, -r * 0.46);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.save();                                          // V자 바이저 슬릿
+    ctx.shadowColor = sk.neon; ctx.shadowBlur = r * 0.7;
+    ctx.strokeStyle = sk.core; ctx.lineWidth = Math.max(2, r * 0.11);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.52, -r * 0.02); ctx.lineTo(0, r * 0.26); ctx.lineTo(r * 0.52, -r * 0.02);
+    ctx.stroke();
+    ctx.restore();
+
+    voidCore(r, r * 0.24, sk.neon, sk.core, t, -r * 0.52);   // 바이저 위에서 맥동
+    if (e.elite) {                                       // 엘리트는 궤도 링이 하나 더
+      voidRing(r, r * 1.15, r * 1.15, t * 0.8, sk.neon, 0.45, 3);
+      voidRing(r, r * 0.8, r * 1.35, -t * 0.6, sk.core, 0.3, 2);
+    }
+
+  } else if (e.type === "slime") {
+    /* ── 코어 큐브 : 천천히 자전하는 육각 결정 ── */
+    ctx.translate(e.x, e.y);
+    ctx.rotate(Math.sin(t * 0.9) * 0.35);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    const g = ctx.createLinearGradient(-r, -r, r, r);
+    g.addColorStop(0, sk.dark); g.addColorStop(1, sk.dark2);
+    ctx.fillStyle = g; ctx.strokeStyle = sk.neon; ctx.lineWidth = 2;
+    ctx.beginPath();                                     // 외곽 육각
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * TAU - Math.PI / 2;
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    ctx.save();                                          // 내부 결정 격자
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = sk.neon; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = i / 3 * Math.PI - Math.PI / 2;
+      ctx.moveTo(Math.cos(a) * r * 0.92, Math.sin(a) * r * 0.92);
+      ctx.lineTo(-Math.cos(a) * r * 0.92, -Math.sin(a) * r * 0.92);
+    }
+    ctx.stroke();
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    ctx.save();                                          // 냉랭한 사선 슬릿 눈
+    ctx.shadowColor = sk.neon; ctx.shadowBlur = r * 0.6;
+    ctx.fillStyle = sk.core;
+    for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.translate(s * r * 0.32, -r * 0.06);
+      ctx.rotate(s * 0.55);
+      ctx.fillRect(-r * 0.22, -r * 0.05, r * 0.44, r * 0.1);
+      ctx.restore();
+    }
+    ctx.restore();
+    voidCore(r, r * 0.24, sk.neon, sk.core, t, r * 0.42);    // 슬릿 눈 아래에서 맥동
+
+  } else {
+    /* ── 보이드 아이 : 궤도 링을 두른 외눈 구체 + 에너지 촉수 ── */
+    ctx.translate(e.x, e.y + Math.sin(t * 2.2) * 3);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    ctx.save();                                          // 아래로 늘어진 촉수
+    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = sk.neon; ctx.lineWidth = Math.max(1.5, r * 0.09);
+    ctx.shadowColor = sk.neon; ctx.shadowBlur = r * 0.5; ctx.lineCap = "round";
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * r * 0.42, r * 0.5);
+      ctx.quadraticCurveTo(i * r * 0.42 + Math.sin(t * 4 + i) * r * 0.3, r * 0.95,
+                           i * r * 0.42 + Math.sin(t * 4 + i) * r * 0.55, r * 1.35);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const g = ctx.createRadialGradient(0, -r * 0.2, r * 0.15, 0, 0, r);
+    g.addColorStop(0, sk.dark); g.addColorStop(1, sk.dark2);
+    ctx.fillStyle = g; ctx.strokeStyle = sk.neon; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    voidRing(r, r * 1.25, r * 0.36, t * 1.1, sk.neon, 0.6, 2);
+    voidRing(r, r * 0.42, r * 1.2, -t * 0.7, sk.core, 0.3, 1.6);
+
+    ctx.save();                                          // 세로 동공의 외눈
+    ctx.shadowColor = sk.neon; ctx.shadowBlur = r * 0.9;
+    ctx.fillStyle = sk.neon;
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.02, r * 0.42, r * 0.3, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#050510";
+    ctx.beginPath(); ctx.ellipse(Math.sin(t * 1.6) * r * 0.1, -r * 0.02,
+                                 r * 0.09, r * 0.26, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = sk.neon; ctx.lineWidth = Math.max(2, r * 0.12);
+    ctx.lineCap = "round";
+    ctx.beginPath();                                     // 눈 위를 가로지르는 각진 눈꺼풀
+    ctx.moveTo(-r * 0.62, -r * 0.5); ctx.lineTo(r * 0.62, -r * 0.26);
+    ctx.stroke();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * TIER 3 : 외계 침공군 (90스테이지~ · 우주 구간)
+ * ───────────────────────────────────────────────────────────────────────
+ * 배경이 우주로 바뀌는 구간이라 적도 전부 "외계인"으로 갈아 끼운다.
+ *  · 접시병 : 작은 UFO 조종석에 앉은 외계인 (돔 유리 + 깜빡이는 착륙등)
+ *  · 그레이 : 큰 물방울 머리에 검은 아몬드 눈, 더듬이와 촉수 팔
+ *  · 젤리   : 반투명 점액질 몸에 눈이 셋, 안에서 기포가 오르내린다
+ * 색은 3종(라임 / 보라 / 시안)으로 돌려 같은 종류라도 지루하지 않게.
+ * ═════════════════════════════════════════════════════════════════════ */
+
+/* 커다란 검은 아몬드 눈 한 쌍 — 외계인이라는 인상을 결정짓는 부분 */
+function alienEyes(r, tilt, w, h, oy) {
+  for (const s of [-1, 1]) {
+    ctx.save();
+    ctx.translate(s * r * 0.34, oy);
+    ctx.rotate(s * tilt);
+    ctx.fillStyle = "#0b1020";
+    ctx.beginPath(); ctx.ellipse(0, 0, r * w, r * h, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.85)";                 // 반짝임 두 점
+    ctx.beginPath(); ctx.ellipse(-r * w * 0.3, -r * h * 0.35, r * w * 0.26, r * h * 0.2, -0.4, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.ellipse(r * w * 0.22, r * h * 0.28, r * w * 0.14, r * h * 0.12, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* 끝에 빛나는 구슬이 달린 더듬이 */
+function antenna(r, side, glow, len) {
+  ctx.save();
+  ctx.strokeStyle = "#4d6b3a"; ctx.lineWidth = Math.max(1.6, r * 0.07);
+  ctx.lineCap = "round";
+  const sway = Math.sin(Game.timer * 3 + side) * r * 0.12;
+  ctx.beginPath();
+  ctx.moveTo(side * r * 0.3, -r * 0.62);
+  ctx.quadraticCurveTo(side * r * 0.5, -r * (0.62 + len * 0.5),
+                       side * r * 0.42 + sway, -r * (0.62 + len));
+  ctx.stroke();
+  ctx.shadowColor = glow; ctx.shadowBlur = r * 0.5;
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(side * r * 0.42 + sway, -r * (0.62 + len), r * 0.13, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemyT3(e, flapA) {
+  const r = e.r, sk = e.skin || ALIEN_SKINS[0], t = Game.timer + (e.wob || 0);
+
+  if (e.type === "bird" || e.elite) {
+    /* ── 접시병 : 조종석 돔에 앉은 외계인 ── */
+    ctx.translate(e.x, e.y + Math.sin(t * 2.6) * 3);
+    ctx.rotate(Math.sin(t * 1.3) * 0.07);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    ctx.save();                                            // 아래로 새는 견인 광선
+    ctx.globalAlpha = 0.22 + Math.sin(t * 5) * 0.06;
+    const bg = ctx.createLinearGradient(0, r * 0.3, 0, r * 1.7);
+    bg.addColorStop(0, sk.light); bg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.34, r * 0.3); ctx.lineTo(r * 0.34, r * 0.3);
+    ctx.lineTo(r * 0.9, r * 1.7); ctx.lineTo(-r * 0.9, r * 1.7);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    const hull = ctx.createLinearGradient(0, -r * 0.1, 0, r * 0.45);   // 접시 선체
+    hull.addColorStop(0, "#e8eef8"); hull.addColorStop(0.5, "#9fb0c9"); hull.addColorStop(1, "#5b6a86");
+    ctx.fillStyle = hull; ctx.strokeStyle = "#39445e"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.16, r * 1.12, r * 0.36, 0, 0, TAU); ctx.fill(); ctx.stroke();
+
+    ctx.save();                                            // 깜빡이는 착륙등
+    ctx.shadowColor = sk.light; ctx.shadowBlur = r * 0.5;
+    for (let i = -2; i <= 2; i++) {
+      const on = (Math.sin(t * 7 + i * 1.1) + 1) * 0.5;
+      ctx.globalAlpha = 0.35 + on * 0.65;
+      ctx.fillStyle = i % 2 ? sk.light : sk.glow;
+      ctx.beginPath(); ctx.arc(i * r * 0.4, r * 0.3, r * 0.09, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    const dome = ctx.createRadialGradient(-r * 0.15, -r * 0.35, r * 0.05, 0, -r * 0.1, r * 0.72);
+    dome.addColorStop(0, "rgba(255,255,255,.9)");          // 유리 돔
+    dome.addColorStop(0.55, "rgba(190,235,255,.45)");
+    dome.addColorStop(1, "rgba(120,190,230,.3)");
+    ctx.fillStyle = dome;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.06, r * 0.62, r * 0.62, 0, Math.PI, 0); ctx.fill();
+
+    ctx.save();                                            // 돔 안의 외계인
+    ctx.beginPath(); ctx.ellipse(0, r * 0.06, r * 0.6, r * 0.6, 0, Math.PI, 0); ctx.clip();
+    const g = ctx.createLinearGradient(0, -r * 0.5, 0, r * 0.1);
+    g.addColorStop(0, sk.skin); g.addColorStop(1, sk.skin2);
+    ctx.fillStyle = g; ctx.strokeStyle = sk.line; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.14, r * 0.36, r * 0.32, 0, 0, TAU); ctx.fill(); ctx.stroke();
+    alienEyes(r, 0.5, 0.15, 0.19, -r * 0.16);
+    ctx.restore();
+
+    ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 2.4;   // 돔 테두리 광택
+    ctx.beginPath(); ctx.ellipse(0, r * 0.06, r * 0.62, r * 0.62, 0, Math.PI * 1.15, Math.PI * 1.62); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    if (e.elite) {                                         // 엘리트 = 모선
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = sk.glow; ctx.lineWidth = 3;
+      ctx.shadowColor = sk.glow; ctx.shadowBlur = r * 0.35;
+      ctx.beginPath(); ctx.ellipse(0, r * 0.16, r * 1.34, r * 0.5, Math.sin(t) * 0.06, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+
+  } else if (e.type === "slime") {
+    /* ── 젤리 외계인 : 반투명 점액질, 눈이 셋 ── */
+    const sq = 1 + Math.sin(e.flap * 0.7) * 0.13;
+    ctx.translate(e.x, e.y + r * (1 - 1 / sq) * 0.5);
+    ctx.scale(1 / sq, sq);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    const g = ctx.createRadialGradient(-r * 0.25, -r * 0.3, r * 0.1, 0, 0, r * 1.05);
+    g.addColorStop(0, "rgba(255,255,255,.85)");
+    g.addColorStop(0.45, sk.skin);
+    g.addColorStop(1, sk.skin2);
+    ctx.fillStyle = g; ctx.strokeStyle = sk.line; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r, r * 0.66);
+    ctx.quadraticCurveTo(-r * 1.08, -r * 0.98, 0, -r * 0.98);
+    ctx.quadraticCurveTo(r * 1.08, -r * 0.98, r, r * 0.66);
+    ctx.quadraticCurveTo(r * 0.5, r * 1.06, 0, r * 0.9);
+    ctx.quadraticCurveTo(-r * 0.5, r * 1.06, -r, r * 0.66);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.save();                                            // 안에서 오르내리는 기포
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#ffffff";
+    for (let i = 0; i < 4; i++) {
+      const by = r * 0.7 - ((t * 26 + i * 33) % (r * 1.7));
+      ctx.beginPath();
+      ctx.arc(Math.sin(t * 2 + i * 2) * r * 0.4, by, r * (0.06 + (i % 2) * 0.04), 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = "#0b1020";                              // 눈 셋
+    for (const [ex, ey, er] of [[-r * 0.36, -r * 0.06, 0.15], [0, -r * 0.24, 0.12], [r * 0.36, -r * 0.06, 0.15]]) {
+      ctx.beginPath(); ctx.ellipse(ex, ey, r * er, r * er * 1.25, 0, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = "rgba(255,255,255,.9)";
+    for (const [ex, ey] of [[-r * 0.39, -r * 0.11], [-r * 0.03, -r * 0.28], [r * 0.33, -r * 0.11]]) {
+      ctx.beginPath(); ctx.arc(ex, ey, r * 0.045, 0, TAU); ctx.fill();
+    }
+    ctx.strokeStyle = "#0b1020"; ctx.lineWidth = 2;         // 작은 입
+    ctx.beginPath(); ctx.arc(0, r * 0.3, r * 0.16, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+
+  } else {
+    /* ── 그레이 : 물방울 머리 + 촉수 팔 ── */
+    ctx.translate(e.x, e.y + Math.sin(t * 2.2) * 3);
+    ctx.rotate(Math.sin(t * 1.1) * 0.08);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+
+    ctx.save();                                            // 텔레파시 오라
+    ctx.globalAlpha = 0.2 + Math.sin(t * 4) * 0.06;
+    ctx.strokeStyle = sk.glow; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.1, r * 1.1, r * 0.5, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+
+    antenna(r, -1, sk.glow, 0.42);
+    antenna(r, 1, sk.glow, 0.36);
+
+    ctx.strokeStyle = sk.skin2; ctx.lineWidth = Math.max(2, r * 0.11);   // 촉수 팔
+    ctx.lineCap = "round";
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * r * 0.3, r * 0.4);
+      ctx.quadraticCurveTo(s * r * 0.8, r * 0.6 + Math.sin(t * 4 + s) * r * 0.12,
+                           s * r * 0.62, r * 1.02);
+      ctx.stroke();
+    }
+
+    const bg2 = ctx.createLinearGradient(0, r * 0.1, 0, r * 0.8);       // 작은 몸통
+    bg2.addColorStop(0, sk.skin); bg2.addColorStop(1, sk.skin2);
+    ctx.fillStyle = bg2; ctx.strokeStyle = sk.line; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.5, r * 0.34, r * 0.38, 0, 0, TAU); ctx.fill(); ctx.stroke();
+
+    const hg = ctx.createRadialGradient(-r * 0.2, -r * 0.45, r * 0.06, 0, -r * 0.2, r * 0.9);
+    hg.addColorStop(0, "#ffffff"); hg.addColorStop(0.35, sk.skin); hg.addColorStop(1, sk.skin2);
+    ctx.fillStyle = hg;                                     // 물방울 머리 (위가 넓다)
+    ctx.beginPath();
+    ctx.moveTo(0, r * 0.42);
+    ctx.bezierCurveTo(-r * 0.92, r * 0.16, -r * 0.86, -r * 0.86, 0, -r * 0.86);
+    ctx.bezierCurveTo(r * 0.86, -r * 0.86, r * 0.92, r * 0.16, 0, r * 0.42);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    alienEyes(r, 0.62, 0.24, 0.3, -r * 0.16);
+    ctx.strokeStyle = "#2a3a22"; ctx.lineWidth = 2;          // 가느다란 입
+    ctx.beginPath(); ctx.moveTo(-r * 0.12, r * 0.2); ctx.lineTo(r * 0.12, r * 0.2); ctx.stroke();
+  }
+}
+
+function drawEnemy(e) {
+  if (e.boss) { drawBoss(e); return; }
+  const flapA = Math.sin(e.flap || 0);
+  ctx.save();
+
+  /* 세대(TIER)에 따라 완전히 다른 그림을 쓴다 — 새끼 로봇만 예외(보스 세트) */
+  const tier = e.type === "botling" ? 0 : (e.tier | 0);
+  if (tier === 1) {
+    drawEnemyT1(e, flapA);
+  } else if (tier === 2) {
+    drawEnemyT2(e, flapA);
+  } else if (tier === 3) {
+    drawEnemyT3(e, flapA);
+  } else if (e.type === "bird" || e.elite) {
+    /* ── 새 : 날개를 퍼덕이며 내려온다 ──
+     * 날갯짓에 맞춰 몸이 살짝 위아래로 뜨고, 머리 깃털이 뒤로 흩날린다. */
+    const lift = flapA * e.r * 0.09;
+    ctx.translate(e.x, e.y + lift);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+    const skin = e.skin || BIRD_SKINS[0];
+    const r = e.r;
+
+    drawWing(r, -1, -0.15 - flapA * 0.85, skin);     // 날개는 몸통 뒤에
+    drawWing(r,  1, -0.15 - flapA * 0.85, skin);
+
+    ctx.fillStyle = skin.wing;                       // 꼬리 깃
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.26, -r * 0.5);
+    ctx.lineTo(0, -r * 1.02 - flapA * r * 0.06);
+    ctx.lineTo(r * 0.26, -r * 0.5);
+    ctx.closePath(); ctx.fill();
+
+    const g = ctx.createLinearGradient(0, -r, 0, r); // 몸통
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.35, skin.body);
+    g.addColorStop(1, skin.body2);
+    ctx.fillStyle = g;
+    ctx.strokeStyle = skin.wing; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 0.8, r * 0.88, 0, 0, TAU); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = "rgba(255,255,255,.75)";         // 배
+    ctx.beginPath(); ctx.ellipse(0, r * 0.28, r * 0.45, r * 0.42, 0, 0, TAU); ctx.fill();
+
+    ctx.fillStyle = skin.beak;                       // 부리 (아래를 향한다)
+    ctx.strokeStyle = "#d98a20"; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, r * 0.24);
+    ctx.lineTo(0, r * 0.62);
+    ctx.lineTo(r * 0.2, r * 0.24);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    const eo = r * 0.3;                              // 눈 · 볼
+    ctx.fillStyle = "#3d3145";
+    ctx.beginPath(); ctx.arc(-eo, -r * 0.1, r * 0.15, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc( eo, -r * 0.1, r * 0.15, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(-eo + r * 0.05, -r * 0.15, r * 0.055, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc( eo + r * 0.05, -r * 0.15, r * 0.055, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(255,140,170,.45)";
+    ctx.beginPath(); ctx.ellipse(-eo * 1.7, r * 0.1, r * 0.16, r * 0.1, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( eo * 1.7, r * 0.1, r * 0.16, r * 0.1, 0, 0, TAU); ctx.fill();
+
+    if (e.elite) {                                   // 보스는 왕관과 성난 눈썹
+      ctx.fillStyle = "#ffd76a"; ctx.strokeStyle = "#d9a52c"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.46, -r * 0.62);
+      ctx.lineTo(-r * 0.3, -r * 0.98); ctx.lineTo(-r * 0.1, -r * 0.7);
+      ctx.lineTo(0, -r * 1.06); ctx.lineTo(r * 0.1, -r * 0.7);
+      ctx.lineTo(r * 0.3, -r * 0.98); ctx.lineTo(r * 0.46, -r * 0.62);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "#3d3145"; ctx.lineWidth = 3.4;
+      ctx.beginPath();
+      ctx.moveTo(-eo * 1.55, -r * 0.36); ctx.lineTo(-eo * 0.5, -r * 0.22);
+      ctx.moveTo( eo * 1.55, -r * 0.36); ctx.lineTo( eo * 0.5, -r * 0.22);
+      ctx.stroke();
+    }
+
+  } else if (e.type === "botling") {
+    /* ── 새끼 로봇 드론 : 보스와 같은 계열의 작고 귀여운 기체 ── */
+    const r = e.r, t = Game.timer;
+    ctx.translate(e.x, e.y + Math.sin(e.flap * 0.6) * 2);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 16 * e.hurt; }
+
+    ctx.globalAlpha = 0.4;                            // 프로펠러
+    ctx.fillStyle = "#dbe6f5";
+    ctx.beginPath();
+    ctx.ellipse(0, -r * 1.1, r * (0.5 + Math.abs(Math.cos(t * 22)) * 0.9), r * 0.12, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#5d6d90";
+    rrect(ctx, -r * 0.12, -r * 1.16, r * 0.24, r * 0.4, r * 0.1); ctx.fill();
+
+    const g = ctx.createLinearGradient(0, -r, 0, r);  // 둥근 장갑 몸체
+    g.addColorStop(0, "#c3d2ea"); g.addColorStop(0.5, "#8fa3c4"); g.addColorStop(1, "#5d6d90");
+    ctx.fillStyle = g;
+    ctx.strokeStyle = "#39445e"; ctx.lineWidth = 2;
+    rrect(ctx, -r * 0.86, -r * 0.78, r * 1.72, r * 1.6, r * 0.55);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = "#1b2233";                        // 외눈 바이저
+    rrect(ctx, -r * 0.62, -r * 0.34, r * 1.24, r * 0.62, r * 0.3); ctx.fill();
+    ctx.save();
+    ctx.shadowColor = "#ff5c6c"; ctx.shadowBlur = 10;
+    ctx.fillStyle = "#ff8a96";
+    ctx.beginPath();
+    ctx.ellipse(Math.sin(t * 2 + e.wob) * r * 0.18, -r * 0.03, r * 0.22, r * 0.18, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "rgba(255,255,255,.55)";          // 하이라이트
+    ctx.beginPath(); ctx.ellipse(-r * 0.36, -r * 0.55, r * 0.24, r * 0.14, -0.5, 0, TAU); ctx.fill();
+
+    ctx.fillStyle = "#46527a";                        // 작은 팔 · 발
+    rrect(ctx, -r * 1.06, -r * 0.14, r * 0.24, r * 0.5, r * 0.1); ctx.fill();
+    rrect(ctx, r * 0.82, -r * 0.14, r * 0.24, r * 0.5, r * 0.1); ctx.fill();
+    ctx.fillStyle = "#ffd76a";                        // 아래쪽 추진 불빛
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.9, r * 0.3, r * 0.16 * (1 + Math.sin(t * 18) * 0.4), 0, 0, TAU);
+    ctx.fill();
+
+  } else if (e.type === "slime") {
+    /* ── 슬라임 : 젤리처럼 눌렸다 펴졌다 ── */
+    const sq = 1 + Math.sin(e.flap * 0.7) * 0.14;
+    ctx.translate(e.x, e.y + e.r * (1 - 1 / sq) * 0.5);
+    ctx.scale(1 / sq, sq);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+    const r = e.r;
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, "#d6f8cd"); g.addColorStop(1, "#63c268");
+    ctx.fillStyle = g; ctx.strokeStyle = "#4b9e52"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r, r * 0.72);
+    ctx.quadraticCurveTo(-r * 1.06, -r * 0.98, 0, -r * 0.98);
+    ctx.quadraticCurveTo(r * 1.06, -r * 0.98, r, r * 0.72);
+    ctx.quadraticCurveTo(0, r * 1.08, -r, r * 0.72);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.6)";          // 반짝임
+    ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.4, r * 0.22, r * 0.14, -0.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#3d3145";
+    ctx.beginPath(); ctx.arc(-r * 0.32, -r * 0.08, r * 0.15, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc( r * 0.32, -r * 0.08, r * 0.15, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#3d3145"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, r * 0.18, r * 0.22, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+
+  } else {
+    /* ── 유령 : 몸을 좌우로 기울이며 아랫자락이 물결친다 ── */
+    ctx.translate(e.x, e.y + Math.sin(e.wob * 1.6) * 3);
+    ctx.rotate(Math.sin(e.wob * 0.9) * 0.14);
+    if (e.hurt > 0) { ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 18 * e.hurt; }
+    const r = e.r;
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(1, "#d9c9ff");
+    ctx.fillStyle = g; ctx.strokeStyle = "#a992d6"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.1, r * 0.95, Math.PI, 0);
+    const w = r * 0.95, tips = 4;
+    for (let i = 0; i <= tips; i++) {
+      const px = w - (2 * w) * (i / tips);
+      const py = r * 0.75 + (i % 2 ? -r * 0.2 : r * 0.14)
+               + Math.sin(e.flap * 0.9 + i * 1.1) * r * 0.14;   // 자락이 살아 움직인다
+      ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#3d3145";
+    ctx.beginPath(); ctx.arc(-r * 0.34, -r * 0.12, r * 0.16, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc( r * 0.34, -r * 0.12, r * 0.16, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(255,140,170,.45)";
+    ctx.beginPath(); ctx.ellipse(-r * 0.55, r * 0.16, r * 0.16, r * 0.1, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( r * 0.55, r * 0.16, r * 0.16, r * 0.1, 0, 0, TAU); ctx.fill();
+  }
+
+  ctx.restore();
+
+  if (!e.boss && (e.hp < e.maxHp || e.elite)) {          // 체력 바 (보스는 상단 바 사용)
+    const w = e.r * 1.8, hpr = clamp(e.hp / e.maxHp, 0, 1);
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    rrect(ctx, e.x - w / 2, e.y - e.r - 12, w, 5, 2.5); ctx.fill();
+    ctx.fillStyle = hpr > 0.5 ? "#7ef0a0" : hpr > 0.25 ? "#ffd76a" : "#ff7a90";
+    rrect(ctx, e.x - w / 2, e.y - e.r - 12, w * hpr, 5, 2.5); ctx.fill();
+  }
+}
+
+/* ── 아이템 ────────────────────────────────────────────────────────────── */
+function drawDrop(d) {
+  const bob = Math.sin(d.t * 7) * 2.5;
+  const x = d.x, y = d.y + bob;
+  ctx.save();
+  ctx.translate(x, y);
+  /* 낙하 속도가 붙을수록 세로로 살짝 늘어난다 — 가속이 눈에 보이게 하는 장치 */
+  const st = clamp((d.vy || 0) / 340, 0, 1) * 0.22;
+  if (st > 0.01) ctx.scale(1 - st * 0.5, 1 + st);
+  if (d.type === "gold") {
+    ctx.shadowColor = "rgba(255,200,80,.8)"; ctx.shadowBlur = 10;
+    const g = ctx.createLinearGradient(0, -11, 0, 11);
+    g.addColorStop(0, "#fff2c0"); g.addColorStop(0.5, "#ffd76a"); g.addColorStop(1, "#e0a52c");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0, 0, 11, 11, 0, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.75)";             // 코인 위 발바닥 각인
+    ctx.beginPath(); ctx.ellipse(0, 2, 3.6, 3, 0, 0, TAU); ctx.fill();
+    for (const [dx, dy] of [[-3.6, -2.6], [-1.2, -4.4], [1.2, -4.4], [3.6, -2.6]])
+      { ctx.beginPath(); ctx.arc(dx, dy, 1.5, 0, TAU); ctx.fill(); }
+  } else if (d.type === "weapon") {                   // 무기 강화 배지
+    ctx.shadowColor = "rgba(255,140,190,.9)"; ctx.shadowBlur = 12;
+    const g = ctx.createLinearGradient(0, -12, 0, 12);
+    g.addColorStop(0, "#ffd1e6"); g.addColorStop(1, "#ff6fa8");
+    ctx.fillStyle = g;
+    rrect(ctx, -12, -12, 24, 24, 8); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ffffff";                        // 위로 향한 화살표 두 겹
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(7, 0); ctx.lineTo(3, 0);
+    ctx.lineTo(3, 4); ctx.lineTo(-3, 4); ctx.lineTo(-3, 0); ctx.lineTo(-7, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(-5, 6, 10, 2.6);
+  } else if (d.type === "magnet") {
+    ctx.fillStyle = "rgba(120,190,255,.25)";
+    ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#7ec8f5"; ctx.lineWidth = 4.5; ctx.lineCap = "butt";
+    ctx.beginPath(); ctx.arc(0, 1, 6, Math.PI, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-6, 1); ctx.lineTo(-6, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, 1); ctx.lineTo(6, 7); ctx.stroke();
+    ctx.strokeStyle = "#ff7a90";
+    ctx.beginPath(); ctx.moveTo(-6, 5); ctx.lineTo(-6, 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, 5); ctx.lineTo(6, 9); ctx.stroke();
+  } else {
+    ctx.fillStyle = "rgba(140,240,200,.3)";
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#68e6b0"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, TAU); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.8)";
+    ctx.beginPath(); ctx.ellipse(-3.5, -4, 3, 2, -0.6, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ── 파티클 (고양이=하트 / 강아지=별) ─────────────────────────────────── */
+function heartPath(g, s) {
+  g.beginPath();
+  g.moveTo(0, s * 0.34);
+  g.bezierCurveTo(-s * 1.1, -s * 0.5, -s * 0.32, -s * 1.1, 0, -s * 0.36);
+  g.bezierCurveTo(s * 0.32, -s * 1.1, s * 1.1, -s * 0.5, 0, s * 0.34);
+  g.closePath();
+}
+function starPath(g, s) {
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? s * 0.45 : s, a = (i / 10) * TAU - Math.PI / 2;
+    const px = Math.cos(a) * r, py = Math.sin(a) * r;
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.closePath();
+}
+function drawParticles() {
+  for (const s of Game.parts) {
+    ctx.save();
+    ctx.globalAlpha = clamp(s.life * 1.7, 0, 1);
+    ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+    if (s.kind === "blast") {                     // 미사일 착탄 링
+      const k = 1 - s.life / 0.34;
+      ctx.strokeStyle = "rgba(255,243,201,.9)";
+      ctx.lineWidth = 6 * (1 - k) + 1;
+      ctx.beginPath(); ctx.arc(0, 0, (s.size || 66) * (0.25 + k * 0.85), 0, TAU); ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+    ctx.fillStyle = s.color;
+    if (s.kind === "spark") {                     // 전기 스파크 : 가늘고 뾰족한 4갈래
+      ctx.shadowColor = s.color; ctx.shadowBlur = 14;
+      const r = s.size, w = s.size * 0.36;               // 갈래를 두툼하게
+      ctx.beginPath();
+      ctx.moveTo(0, -r); ctx.lineTo(w, -w); ctx.lineTo(r, 0); ctx.lineTo(w, w);
+      ctx.lineTo(0, r); ctx.lineTo(-w, w); ctx.lineTo(-r, 0); ctx.lineTo(-w, -w);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(0, 0, w * 1.1, 0, TAU); ctx.fill();
+      ctx.restore();
+      continue;
+    }
+    if (s.kind === "heart") heartPath(ctx, s.size); else starPath(ctx, s.size);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  for (const q of Game.pops) {
+    ctx.globalAlpha = clamp(q.life * 1.4, 0, 1);
+    text(q.str, q.x, q.y, 14, q.color, "center");
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ── 스테이지 / 러시 / 보스 배너 ─────────────────────────────────────── */
+function drawBanners() {
+  if (Game.stageBanner > 0) {
+    const k = 1 - Game.stageBanner / 1.8;
+    const sc = 1 + Math.max(0, 1 - k * 6) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = clamp(Game.stageBanner * 1.4, 0, 1);
+    ctx.translate(CW / 2, 300);
+    ctx.scale(sc, sc);
+    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 6;
+    ctx.font = "800 40px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.strokeText("STAGE " + Game.stage, 0, 0);
+    ctx.fillStyle = "#ffd76a";
+    ctx.fillText("STAGE " + Game.stage, 0, 0);
+    ctx.font = "700 14px " + FONT;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(currentBiomeName() + " · " + FLAT_SKIES[skyIndex(Game.stage)].name, 0, 32);
+    ctx.restore();
+  }
+  if (Game.tierBanner > 0) {                          // 세대 교체 경고
+    const k = clamp(Game.tierBanner / 2.4, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = clamp(Game.tierBanner * 1.2, 0, 1);
+    ctx.translate(CW / 2, 240);
+    ctx.scale(1 + (1 - k) * 0.06, 1 + (1 - k) * 0.06);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(20,4,10,.55)";
+    rrect(ctx, -160, -34, 320, 68, 14); ctx.fill();
+    ctx.font = "800 15px " + FONT;
+    ctx.fillStyle = "#ff8a7a";
+    ctx.fillText("WARNING  —  적의 세대가 바뀐다", 0, -14);
+    ctx.font = "800 27px " + FONT;
+    ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.lineWidth = 5;
+    ctx.strokeText(TIER_NAME[Game.tierShown] + " 출현", 0, 16);
+    ctx.fillStyle = Game.tierShown === 1 ? "#ff5c4a" : "#7ef0ff";
+    ctx.fillText(TIER_NAME[Game.tierShown] + " 출현", 0, 16);
+    ctx.restore();
+  }
+  if (Game.rushBanner > 0) {
+    ctx.globalAlpha = clamp(Game.rushBanner * 1.6, 0, 1);
+    const sc = 1 + Math.sin(Game.timer * 14) * 0.05;
+    ctx.save();
+    ctx.translate(CW / 2, 380); ctx.scale(sc, sc);
+    ctx.font = "800 34px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 5;
+    ctx.strokeText("RUSH!", 0, 0);
+    ctx.fillStyle = "#ff7a90";
+    ctx.fillText("RUSH!", 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ── 보스 체력바 ──────────────────────────────────────────────────────── */
+/* ── 급강하 낙하 지점 예고 ──────────────────────────────────────────────
+ * 세 가지를 동시에 알려 준다.
+ *   어디로  : 바닥의 타원 마커 (실제 피격 폭과 같은 크기)
+ *   언제    : 마커 위로 조여드는 링 + 점점 붉어지는 색
+ *   무엇이  : 보스에서 마커까지 이어지는 위험 기둥 (줄무늬가 아래로 흐른다) */
+function drawDiveWarn() {
+  const b = Game.boss;
+  if (!b || (b.phase !== "warn" && b.phase !== "dive")) return;
+  const warn = b.phase === "warn";
+  const k = warn ? clamp(b.pt / BOSS_WARN, 0, 1) : 1;
+  const fade = warn ? 1 : clamp(1 - b.pt / 0.42, 0, 1) * 0.7;
+  const x = b.diveX, y = BOSS_DIVE_Y;
+  const RX = 96, RY = 26;                              // 실제 피격 반경과 같은 폭
+  const blink = 0.55 + Math.abs(Math.sin(b.pt * (8 + k * 16))) * 0.45;
+
+  ctx.save();
+  ctx.globalAlpha = fade;
+
+  /* 위험 기둥 — 보스 아래에서 마커까지 */
+  const colTop = b.y + b.r * 0.4;
+  if (y > colTop) {
+    const g = ctx.createLinearGradient(0, colTop, 0, y);
+    g.addColorStop(0, "rgba(255,70,90,0)");
+    g.addColorStop(1, "rgba(255,70,90," + (0.16 + k * 0.16).toFixed(3) + ")");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - RX, colTop, RX * 2, y - colTop);
+
+    ctx.save();                                        // 아래로 흐르는 줄무늬
+    ctx.beginPath(); ctx.rect(x - RX, colTop, RX * 2, y - colTop); ctx.clip();
+    ctx.globalAlpha = fade * 0.22;
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 9;
+    const off = (Game.timer * 220) % 56;
+    for (let sy = colTop - RX * 2; sy < y + 56; sy += 56) {
+      ctx.beginPath();
+      ctx.moveTo(x - RX - 30, sy + off);
+      ctx.lineTo(x + RX + 30, sy + off - (RX * 2 + 60));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* 바닥 마커 */
+  ctx.globalAlpha = fade * (0.28 + k * 0.34);
+  ctx.fillStyle = "#ff3b57";
+  ctx.beginPath(); ctx.ellipse(x, y, RX, RY, 0, 0, TAU); ctx.fill();
+
+  ctx.globalAlpha = fade * blink;
+  ctx.strokeStyle = "#ff5c72"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.ellipse(x, y, RX, RY, 0, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(x, y, RX - 7, RY - 5, 0, 0, TAU); ctx.stroke();
+
+  /* 조여드는 링 — 링이 마커에 닿는 순간이 착지 시각 */
+  if (warn) {
+    ctx.globalAlpha = fade * 0.9;
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3.5;
+    const t = 1 + (1 - k) * 1.9;
+    ctx.beginPath(); ctx.ellipse(x, y, RX * t, RY * t, 0, 0, TAU); ctx.stroke();
+  }
+
+  /* 십자 조준선 + 경고 표시 */
+  ctx.globalAlpha = fade * blink;
+  ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x - RX * 0.5, y); ctx.lineTo(x + RX * 0.5, y);
+  ctx.moveTo(x, y - RY * 0.55); ctx.lineTo(x, y + RY * 0.55);
+  ctx.stroke();
+
+  if (warn) {
+    ctx.globalAlpha = fade * blink;
+    ctx.font = "900 38px " + FONT;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 5;   // 흰 테 + 붉은 속
+    ctx.strokeText("!", x, y - RY - 26);
+    ctx.fillStyle = "#ff3b57";
+    ctx.fillText("!", x, y - RY - 26);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawBossBar() {
+  const b = Game.boss;
+  if (!b) return;
+  const ratio = clamp(b.hp / b.maxHp, 0, 1);
+  const w = CW - 44, x = 22, y = 138;
+  ctx.fillStyle = "rgba(20,45,75,.5)";
+  rrect(ctx, x - 4, y - 16, w + 8, 30, 12); ctx.fill();
+  text("BOSS", x, y - 4, 11, "#ff9ec4", "left", 800);
+  text(Math.ceil(b.hp) + " / " + b.maxHp, x + w, y - 4, 11, "rgba(255,255,255,.8)", "right", 700);
+  ctx.fillStyle = "rgba(255,255,255,.22)";
+  rrect(ctx, x, y + 3, w, 8, 4); ctx.fill();
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, "#ff7a90"); g.addColorStop(1, "#ffd76a");
+  ctx.fillStyle = g;
+  rrect(ctx, x, y + 3, Math.max(4, w * ratio), 8, 4); ctx.fill();
+  if (Game.bossT > BOSS_TIMEOUT - 8) {                 // 도망까지 남은 시간 경고
+    ctx.globalAlpha = 0.5 + Math.abs(Math.sin(Game.timer * 6)) * 0.5;
+    text("곧 달아납니다!", CW / 2, y + 26, 11, "#ffd76a", "center", 800);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ── 피버 레이저 ──────────────────────────────────────────────────────── */
+/* 커다란 뼈다귀 윤곽 — 가운데 기둥 + 네 귀퉁이 마디.
+ * 여러 조각이 겹친 도형이라 "선을 먼저 긋고 면을 나중에" 칠해야
+ * 조각끼리 만나는 안쪽 경계선이 면에 덮여 하나의 실루엣으로 보인다. */
+function bonePath(g, s) {
+  g.beginPath();
+  g.moveTo(-s * 0.26, -s * 0.66);
+  g.lineTo(s * 0.26, -s * 0.66);
+  g.lineTo(s * 0.26, s * 0.66);
+  g.lineTo(-s * 0.26, s * 0.66);
+  g.closePath();
+  for (const sy of [-1, 1])
+    for (const sx of [-1, 1]) {
+      g.moveTo(sx * s * 0.40 + s * 0.32, sy * s * 0.70);
+      g.arc(sx * s * 0.40, sy * s * 0.70, s * 0.32, 0, TAU);
+    }
+}
+
+/* 피버 관통탄 한 발 */
+function drawFeverShot(f, cat) {
+  const pulse = 1 + Math.sin(f.t * 9 + f.wob) * (cat ? 0.09 : 0.04);   // 하트는 두근두근
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(cat ? Math.sin(f.t * 3 + f.wob) * 0.12 : f.spin);
+  ctx.scale(pulse, cat ? 2 - pulse : pulse);
+
+  const glowCol = cat ? "255,110,180" : "255,190,70";
+  ctx.save();                                        // 바깥 후광
+  ctx.globalAlpha = 0.35;
+  const gg = ctx.createRadialGradient(0, 0, f.r * 0.4, 0, 0, f.r * 1.55);
+  gg.addColorStop(0, "rgba(" + glowCol + ",.85)");
+  gg.addColorStop(1, "rgba(" + glowCol + ",0)");
+  ctx.fillStyle = gg;
+  ctx.beginPath(); ctx.arc(0, 0, f.r * 1.55, 0, TAU); ctx.fill();
+  ctx.restore();
+
+  ctx.shadowColor = "rgba(" + glowCol + ",.95)"; ctx.shadowBlur = 34;
+  ctx.lineJoin = "round";
+
+  if (cat) {
+    const s = f.r * 0.96;
+    heartPath(ctx, s);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 15;  // 뼈다귀와 같은 굵기의 흰 테
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    const g = ctx.createLinearGradient(0, -s, 0, s * 0.4);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.35, "#ff9ec4"); g.addColorStop(1, "#ff4d86");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.75)";         // 광택
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.34, -s * 0.44, s * 0.20, s * 0.12, -0.6, 0, TAU); ctx.fill();
+  } else {
+    const s = f.r * 1.0;
+    bonePath(ctx, s);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 15;  // 실루엣 테두리를 먼저
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    const g = ctx.createLinearGradient(-s * 0.6, -s, s * 0.6, s);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.45, "#ffeeb4"); g.addColorStop(1, "#efa524");
+    ctx.fillStyle = g;
+    ctx.fill();                                       // 면이 안쪽 경계선을 덮는다
+    ctx.fillStyle = "rgba(255,255,255,.55)";          // 기둥 위 하이라이트
+    rrect(ctx, -s * 0.13, -s * 0.42, s * 0.11, s * 0.84, s * 0.06); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawFeverFx() {
+  const cat = Game.pet.key === "cat";
+  for (const f of Game.feverShots) drawFeverShot(f, cat);
+  if (Game.feverT <= 0 && Game.feverBanner <= 0) return;
+
+  const k = Game.feverT / FEVER_TIME;
+  const fade = clamp(k < 0.15 ? k / 0.15 : 1, 0, 1);   // 끝날 때 부드럽게 사라진다
+  ctx.fillStyle = (cat ? "rgba(255,190,220," : "rgba(255,232,170,") + (0.13 * fade).toFixed(3) + ")";
+  ctx.fillRect(0, 0, CW, CH);
+
+  if (Game.feverBanner > 0) {                          // 진입 배너
+    ctx.save();
+    ctx.globalAlpha = clamp(Game.feverBanner * 1.3, 0, 1);
+    ctx.translate(CW / 2, CH * 0.32);
+    ctx.rotate(Math.sin(Game.timer * 13) * 0.03);
+    ctx.font = "800 40px " + FONT;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 7;
+    ctx.strokeText("FEVER TIME!", 0, 0);
+    const bg = ctx.createLinearGradient(-130, 0, 130, 0);
+    bg.addColorStop(0, "#ff6f9c"); bg.addColorStop(0.5, "#ffd23f"); bg.addColorStop(1, "#7ec8f5");
+    ctx.fillStyle = bg;
+    ctx.fillText("FEVER TIME!", 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ── 필살기 충격파 이펙트 ─────────────────────────────────────────────── */
+function drawUltFx() {
+  if (Game.ultT <= 0) return;
+  const p = Game.player, r = Game.ultR;
+  const k = 1 - Game.ultT / ULT_TIME;
+  const pet = Game.pet;
+
+  ctx.save();
+  ctx.globalAlpha = (1 - k) * 0.85;
+  const g = ctx.createRadialGradient(p.x, p.y, Math.max(1, r * 0.55), p.x, p.y, r);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.82, pet.key === "cat" ? "rgba(255,150,200,.5)" : "rgba(255,215,110,.5)");
+  g.addColorStop(1, "rgba(255,255,255,.95)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,.95)";
+  ctx.lineWidth = 7 * (1 - k) + 2;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.stroke();
+
+  // 충격파 테두리를 따라 하트(고양이) / 별(강아지)이 돌며 퍼진다
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + Game.timer * 2.2;
+    ctx.save();
+    ctx.translate(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r);
+    ctx.rotate(a + Game.timer * 3);
+    ctx.fillStyle = pet.pcolor[i % pet.pcolor.length];
+    if (pet.particle === "heart") heartPath(ctx, 11); else starPath(ctx, 11);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(255,255,255," + ((1 - k) * 0.3).toFixed(3) + ")";
+  ctx.fillRect(0, 0, CW, CH);
+}
+
+/* ── 필살기 버튼 ──────────────────────────────────────────────────────── */
+/* 개발용 구석 힌트 — 아주 흐릿한 점 하나. 누르면 진행 개수가 잠깐 보인다. */
+function drawDevCorner() {
+  const active = Game.timer - (Game.devTapT || -9) < DEV_WINDOW;
+  ctx.save();
+  ctx.globalAlpha = active ? 0.5 : 0.13;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(CW - 22, CH - 22, active ? 7 : 4.5, 0, TAU); ctx.fill();
+  if (active) {
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(CW - 22, CH - 22, 14, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawUltButton() {
+  const b = ULT_BTN, ratio = clamp(Game.ult / ULT_NEED, 0, 1), ready = ultReady();
+  const pulse = ready ? 1 + Math.sin(Game.timer * 7) * 0.06 : 1;
+
+  ctx.save();
+  ctx.translate(b.cx, b.cy);
+  ctx.scale(pulse, pulse);
+
+  ctx.fillStyle = "rgba(20,45,75,.5)";
+  ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,.28)"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(0, 0, b.r - 4, 0, TAU); ctx.stroke();
+
+  ctx.strokeStyle = ready ? "#ffd76a" : (Game.pet.body2 || "#ff9ec4");
+  ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(0, 0, b.r - 4, -Math.PI / 2, -Math.PI / 2 + TAU * ratio);
+  ctx.stroke();
+
+  if (ready) {                                     // 준비 완료 시 빛난다
+    ctx.shadowColor = "#ffd76a"; ctx.shadowBlur = 18;
+    ctx.fillStyle = "#ffd76a";
+  } else ctx.fillStyle = "rgba(255,255,255,.55)";
+
+  if (Game.pet.particle === "heart") heartPath(ctx, 13); else starPath(ctx, 13);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  if (ready) {
+    ctx.globalAlpha = 0.6 + Math.abs(Math.sin(Game.timer * 5)) * 0.4;
+    text("필살기!", b.cx, b.cy - b.r - 14, 12, "#ffd76a", "center");
+    ctx.globalAlpha = 1;
+  } else {
+    // 퍼센트는 버튼 위쪽에 (아래에 두면 화면 끝에 잘린다)
+    text(Math.floor(ratio * 100) + "%", b.cx, b.cy - b.r - 13, 11, "rgba(255,255,255,.8)", "center", 700);
+  }
+}
+
+/* ── HUD ───────────────────────────────────────────────────────────────── */
+function drawHUD() {
+  ctx.fillStyle = "rgba(20,45,75,.42)";
+  rrect(ctx, 8, 8, CW - 16, 58, 16); ctx.fill();
+
+  text("SCORE", 22, 24, 10, "rgba(255,255,255,.75)", "left");
+  text(String(Game.score).padStart(6, "0"), 22, 45, 22, "#ffffff", "left");
+
+  text("GOLD", CW / 2 + 6, 24, 10, "rgba(255,255,255,.75)", "center");
+  text(String(Game.gold), CW / 2 + 6, 45, 20, "#ffd76a", "center");
+
+  text("STAGE", CW - 22, 24, 10, "rgba(255,255,255,.75)", "right");
+  text(String(Game.stage), CW - 22, 45, 22, "#a7f0c6", "right");
+
+  // 다음 스테이지까지의 비행 거리
+  const prog = (Game.distance % STAGE_DIST) / STAGE_DIST;
+  ctx.fillStyle = "rgba(255,255,255,.18)";
+  rrect(ctx, 16, 70, CW - 32, 3.5, 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.75)";
+  rrect(ctx, 16, 70, (CW - 32) * prog, 3.5, 2); ctx.fill();
+  text(Math.floor(Game.distance) + " m", CW - 22, 88, 11, "rgba(255,255,255,.85)", "right", 700);
+
+  // 피버 게이지 — 골드로 차오르고, 가득 차면 자동 발동
+  const fr = Game.feverT > 0 ? Game.feverT / FEVER_TIME : clamp(Game.fever, 0, 1);
+  const active = Game.feverT > 0;
+  ctx.fillStyle = "rgba(255,255,255,.18)";
+  rrect(ctx, 16, 104, CW - 32, 7, 3.5); ctx.fill();
+  if (fr > 0.001) {
+    const fg = ctx.createLinearGradient(16, 0, CW - 16, 0);
+    if (active) {
+      const sh = (Game.timer * 200) % 360;
+      for (let i = 0; i <= 5; i++) fg.addColorStop(i / 5, "hsl(" + ((sh + i * 60) % 360) + ",95%,65%)");
+    } else { fg.addColorStop(0, "#ffd1e6"); fg.addColorStop(1, "#ff6f9c"); }
+    ctx.fillStyle = fg;
+    rrect(ctx, 16, 104, Math.max(7, (CW - 32) * fr), 7, 3.5); ctx.fill();
+  }
+  ctx.globalAlpha = active ? 0.75 + Math.abs(Math.sin(Game.timer * 10)) * 0.25 : 0.9;
+  text(active ? "FEVER!  " + Game.feverT.toFixed(1) + "s"
+              : "FEVER  " + Math.floor(fr * 100) + "%",
+       CW / 2, 107.5, 9, active ? "#ffffff" : "#ffb9d4", "center", 800);
+  ctx.globalAlpha = 1;
+
+  const p = Game.player;
+  if (p) {
+    /* 상태 줄: 무기 레벨 → 실드 → 자석 순으로 왼쪽부터 흘려 배치한다.
+     * (처음엔 HUD 한가운데에 뒀더니 GOLD 숫자와 겹쳐 읽기 어려웠다) */
+    const st = fireStats();
+    text("LV." + st.lv, 22, 89, 12, "#ff9ec4", "left", 800);
+    for (let i = 0; i < MAX_WLV; i++) {
+      ctx.fillStyle = i < st.lv ? "#ff8fbc" : "rgba(255,255,255,.3)";
+      ctx.beginPath(); ctx.arc(60 + i * 10, 89, 3.1, 0, TAU); ctx.fill();
+    }
+    let bx = 118;
+    const dsp = droneSpec();
+    if (dsp) {                                        // 드론 형태와 랭크
+      const col = DRONE_COLORS[dsp.form];
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(bx + 7, 88, 5.5, 0, TAU); ctx.fill();
+      text(dsp.name, bx + 17, 89, 11, col, "left", 800);
+      text("★".repeat(dsp.rank) + "☆".repeat(3 - dsp.rank), bx + 17 + 46, 89, 9, col, "left", 800);
+      bx += 108;
+    }
+    if (p.shield > 0) {
+      const low = p.shieldT < SHIELD_WARN;
+      ctx.save();
+      if (low) ctx.globalAlpha = 0.35 + Math.abs(Math.sin(Game.timer * 12)) * 0.65;
+      ctx.strokeStyle = low ? "#ffd76a" : "#68e6b0"; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(bx + 8, 88, 8, 0, TAU); ctx.stroke();
+      text("x" + p.shield + "  " + p.shieldT.toFixed(1) + "s", bx + 20, 89, 12,
+           low ? "#ffd76a" : "#68e6b0", "left", 700);
+      ctx.restore();
+      bx += 86;
+    }
+    if (p.rapidT > 0) {                                 // 연사 강화 남은 시간
+      ctx.save();
+      ctx.globalAlpha = 0.55 + Math.abs(Math.sin(Game.timer * 9)) * 0.45;
+      ctx.fillStyle = "#ffd76a";
+      ctx.beginPath();                                  // 번개 아이콘
+      ctx.moveTo(bx + 10, 80); ctx.lineTo(bx + 3, 90); ctx.lineTo(bx + 8, 90);
+      ctx.lineTo(bx + 5, 97); ctx.lineTo(bx + 14, 86); ctx.lineTo(bx + 9, 86);
+      ctx.closePath(); ctx.fill();
+      text("x1.5  " + p.rapidT.toFixed(1) + "s", bx + 18, 89, 12, "#ffd76a", "left", 800);
+      ctx.restore();
+      bx += 90;
+    }
+    if (p.magnet > 0) {
+      ctx.strokeStyle = "#7ec8f5"; ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.arc(bx + 8, 88, 6, Math.PI, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx + 2, 88); ctx.lineTo(bx + 2, 94); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx + 14, 88); ctx.lineTo(bx + 14, 94); ctx.stroke();
+      text(p.magnet.toFixed(1) + "s", bx + 22, 89, 12, "#7ec8f5", "left", 700);
+    }
+  }
+}
+
+/* ── 캐릭터 선택 화면 ──────────────────────────────────────────────────── */
+/* =========================================================================
+ * 타이틀 화면 — 「강아지&고양이 플라이」
+ * -------------------------------------------------------------------------
+ * 연출 타임라인 (titleT 기준)
+ *   0.15 ~ 1.30s  고양이(왼쪽)·강아지(오른쪽)가 화면 밖에서 가운데로 날아온다
+ *   0.45 ~ 1.45s  로고가 위에서 떨어져 내려와 살짝 오버슈트한 뒤 "탁" 멈춘다
+ *   1.45s         착지 순간 로고가 납작해졌다 튀어오르며 별이 터진다
+ *   2.0s ~        "탭하여 시작" 안내가 깜빡인다
+ * ========================================================================= */
+const TITLE_LINE1 = "강아지 & 고양이";
+const TITLE_LINE2 = "플라이";
+const titleFx = [];                                  // 떠오르는 하트·별
+let titleLanded = false;
+
+function easeOutCubic(k) { return 1 - Math.pow(1 - k, 3); }
+function easeOutBack(k) {                            // 목표를 살짝 지나쳤다 되돌아온다
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+}
+
+function updateTitle(dt) {
+  Game.titleT += dt;
+  const t = Game.titleT;
+  if (t > 1.45 && !titleLanded) {                    // 착지 : 별 폭죽 + 진동
+    titleLanded = true;
+    Game.shake = 7;
+    for (let i = 0; i < 26; i++) {
+      const a = rand(0, TAU), sp = rand(120, 380);
+      titleFx.push({ x: CW / 2 + Math.cos(a) * 60, y: 250, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120,
+                     life: rand(0.6, 1.1), kind: Math.random() < 0.5 ? "star" : "heart",
+                     size: rand(6, 12), rot: rand(0, TAU), spin: rand(-8, 8),
+                     color: ["#ffd76a", "#ff9ec4", "#ffffff", "#8fd9ff"][(Math.random() * 4) | 0] });
+    }
+    Sound.play("bigpop");
+  }
+  if (t > 1.3 && Math.random() < dt * 5) {           // 두 친구 주변에서 하트·별이 떠오른다
+    const side = Math.random() < 0.5 ? -1 : 1;
+    titleFx.push({ x: CW / 2 + side * rand(40, 110), y: rand(470, 520), vx: rand(-20, 20), vy: rand(-90, -50),
+                   life: rand(1.0, 1.6), kind: side < 0 ? "heart" : "star", size: rand(5, 9),
+                   rot: rand(0, TAU), spin: rand(-4, 4), color: side < 0 ? "#ff9ec4" : "#ffd76a", float: true });
+  }
+  for (let i = titleFx.length - 1; i >= 0; i--) {
+    const f = titleFx[i];
+    f.life -= dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.spin * dt;
+    if (!f.float) f.vy += 520 * dt;
+    if (f.life <= 0) titleFx.splice(i, 1);
+  }
+}
+
+/* 통통한 외곽선 글자 — 한 글자씩 살짝 기울이고 들썩여서 "귀여운 로고"로 만든다 */
+function drawBubbleText(str, cx, cy, size, fillTop, fillBot, outline, wobble) {
+  ctx.save();
+  ctx.font = "900 " + size + "px " + FONT;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  const chars = [...str];
+  const widths = chars.map(c => ctx.measureText(c).width * (c === " " ? 0.6 : 1));
+  const total = widths.reduce((a, b) => a + b, 0) + (chars.length - 1) * size * 0.04;
+  let x = cx - total / 2;
+  chars.forEach((c, i) => {
+    const w = widths[i];
+    const px = x + w / 2, t = Game.timer;
+    const rot = (Math.sin(i * 1.7) * 0.07 + Math.sin(t * 2.2 + i) * 0.025) * wobble;
+    const dy = (Math.sin(i * 2.3) * size * 0.05 + Math.sin(t * 2.6 + i * 0.8) * size * 0.03) * wobble;
+    ctx.save();
+    ctx.translate(px, cy + dy);
+    ctx.rotate(rot);
+    const g = ctx.createLinearGradient(0, -size * 0.5, 0, size * 0.5);
+    g.addColorStop(0, fillTop); g.addColorStop(1, fillBot);
+    ctx.strokeStyle = outline; ctx.lineWidth = size * 0.30; ctx.strokeText(c, 0, 0);   // 진한 외곽
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = size * 0.14; ctx.strokeText(c, 0, 0);  // 흰 테
+    ctx.fillStyle = g; ctx.fillText(c, 0, 0);
+    ctx.fillStyle = "rgba(255,255,255,.55)";                                         // 위쪽 광택
+    ctx.beginPath(); ctx.ellipse(-size * 0.08, -size * 0.28, size * 0.2, size * 0.07, -0.3, 0, TAU); ctx.fill();
+    ctx.restore();
+    x += w + size * 0.04;
+  });
+  ctx.restore();
+}
+
+/* 로고 전체 — 구름판 + 두 줄 글자 + 작은 날개 */
+function drawLogo(cx, cy, scale, wobble) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = "rgba(255,255,255,.55)";           // 뒤에 깔리는 구름판
+  ctx.beginPath();
+  ctx.ellipse(0, 20, 178, 74, 0, 0, TAU);
+  ctx.arc(-120, -14, 52, 0, TAU); ctx.arc(-40, -40, 60, 0, TAU);
+  ctx.arc(50, -42, 62, 0, TAU); ctx.arc(125, -12, 50, 0, TAU);
+  ctx.fill();
+
+  /* 1줄: 강아지 = 노랑 · & = 빨강 하트색 · 고양이 = 핑크 */
+  ctx.font = "900 34px " + FONT;
+  const wA = ctx.measureText("강아지").width, wAmp = ctx.measureText(" & ").width, wC = ctx.measureText("고양이").width;
+  const tot = wA + wAmp + wC;
+  drawBubbleText("강아지", -tot / 2 + wA / 2, -30, 34, "#fff1b8", "#f7b73a", "#7a4a12", wobble);
+  drawBubbleText("&",      -tot / 2 + wA + wAmp / 2, -28, 30, "#ffb3c6", "#ff4d6a", "#7a1a2c", wobble);
+  drawBubbleText("고양이", -tot / 2 + wA + wAmp + wC / 2, -30, 34, "#ffe0ec", "#ff8fbc", "#8a2a55", wobble);
+
+  /* 2줄: 플라이 = 하늘색, 크게 */
+  drawBubbleText(TITLE_LINE2, 0, 34, 70, "#ffffff", "#5fb8f0", "#1f4b7a", wobble);
+
+  for (const sgn of [-1, 1]) {                       // 양옆 작은 날개
+    ctx.save();
+    ctx.translate(sgn * 150, 30);
+    ctx.scale(sgn, 1);
+    ctx.rotate(Math.sin(Game.timer * 6) * 0.18 * wobble - 0.2);
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#8fc6ea"; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(22, -30, 48, -22);
+    ctx.quadraticCurveTo(30, -12, 40, 0);
+    ctx.quadraticCurveTo(24, 4, 30, 16);
+    ctx.quadraticCurveTo(12, 12, 0, 10);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawTitle() {
+  const t = Game.titleT;
+  ctx.fillStyle = "rgba(20,45,75,.28)";
+  ctx.fillRect(0, 0, CW, CH);
+
+  /* ── 두 친구의 입장 ── */
+  const kIn = easeOutCubic(clamp((t - 0.15) / 1.15, 0, 1));
+  const catX = -80 + (CW / 2 - 84 + 80) * kIn;
+  const dogX = CW + 80 - (CW + 80 - (CW / 2 + 84)) * kIn;
+  const hoverY = 500 + Math.sin(t * 2.4) * 8;
+  const arrived = kIn >= 1;
+  /* 날아오는 동안은 진행 방향으로 기울고, 도착하면 서로를 향해 살짝 갸웃 */
+  const catTilt = arrived ? Math.sin(t * 2.4) * 0.08 + 0.12 : 0.42 * (1 - kIn) + 0.12;
+  const dogTilt = arrived ? -Math.sin(t * 2.4 + 0.5) * 0.08 - 0.12 : -0.42 * (1 - kIn) - 0.12;
+  const flap = t * 11;
+  drawPet(PETS.cat, catX, hoverY + Math.sin(t * 2.4) * 4, 2.2, flap, catTilt, true, "happy");
+  drawPet(PETS.dog, dogX, hoverY - Math.sin(t * 2.4) * 4, 2.2, flap + 1.5, dogTilt, true, "happy");
+
+  for (const f of titleFx) {                          // 하트·별
+    ctx.save();
+    ctx.globalAlpha = clamp(f.life * 1.5, 0, 1);
+    ctx.translate(f.x, f.y); ctx.rotate(f.rot);
+    ctx.fillStyle = f.color;
+    if (f.kind === "heart") heartPath(ctx, f.size); else starPath(ctx, f.size);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ── 로고 낙하 ── */
+  const kDrop = clamp((t - 0.45) / 1.0, 0, 1);
+  const logoY = -180 + (250 + 180) * easeOutBack(kDrop);
+  let sx = 1, sy = 1;
+  if (kDrop >= 1) {                                   // 착지 후 납작→튕김 (감쇠 진동)
+    const a = t - 1.45;
+    const sq = Math.exp(-a * 5) * Math.sin(a * 22) * 0.18;
+    sx = 1 + sq; sy = 1 - sq;
+  } else if (kDrop > 0.75) {                          // 떨어지는 동안은 세로로 길쭉
+    sy = 1 + (1 - kDrop) * 0.3; sx = 1 - (1 - kDrop) * 0.12;
+  }
+  const wobble = kDrop >= 1 ? 1 : 0;
+  ctx.save();
+  ctx.translate(CW / 2, logoY + (kDrop >= 1 ? Math.sin(t * 1.8) * 4 : 0));
+  ctx.scale(sx, sy);
+  drawLogo(0, 0, 1, wobble);
+  ctx.restore();
+
+  /* ── 안내 ── */
+  if (t > 2.0) {
+    const a = 0.5 + Math.abs(Math.sin(t * 3)) * 0.5;
+    ctx.globalAlpha = a;
+    text("탭하여 시작", CW / 2, 650, 20, "#ffffff", "center");
+    ctx.globalAlpha = 1;
+    if (Game.best.score > 0)
+      text("최고 기록  " + Game.best.score.toLocaleString() + "  ·  STAGE " + Game.best.stage,
+           CW / 2, 690, 13, "#ffe9a8", "center", 700);
+  }
+}
+
+function drawSelect() {
+  ctx.fillStyle = "rgba(20,45,75,.35)";
+  ctx.fillRect(0, 0, CW, CH);
+
+  const bob = Math.sin(Game.timer * 2) * 5;
+  drawLogo(CW / 2, 140 + bob, 0.62, 1);
+  text("함께 날아갈 친구를 고르세요", CW / 2, 232, 14, "#eaf6ff", "center", 700);
+
+  for (const key of ["cat", "dog"]) {
+    const c = CARDS[key], pet = PETS[key];
+    const hover = Math.sin(Game.timer * 2.4 + (key === "cat" ? 0 : 1.2)) * 4;
+
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    rrect(ctx, c.x, c.y + hover, c.w, c.h, 22); ctx.fill();
+    ctx.strokeStyle = pet.line; ctx.lineWidth = 3;
+    rrect(ctx, c.x, c.y + hover, c.w, c.h, 22); ctx.stroke();
+
+    drawPet(pet, c.x + c.w / 2, c.y + hover + 78, 1.55, Game.timer * 10, 0, true);
+
+    text(pet.name, c.x + c.w / 2, c.y + hover + 142, 22, "#3d3145", "center");
+    ctx.fillStyle = pet.body2;
+    rrect(ctx, c.x + 26, c.y + hover + 156, c.w - 52, 22, 11); ctx.fill();
+    text(pet.tag, c.x + c.w / 2, c.y + hover + 168, 12, "#ffffff", "center", 800);
+    pet.desc.forEach((line, i) =>
+      text(line, c.x + c.w / 2, c.y + hover + 194 + i * 17, 11.5, "#7a6a80", "center", 700));
+  }
+
+  const a = 0.55 + Math.abs(Math.sin(Game.timer * 3)) * 0.45;
+  ctx.globalAlpha = a;
+  text("카드를 탭하면 바로 출발!", CW / 2, 588, 17, "#ffffff", "center");
+  ctx.globalAlpha = 1;
+
+  if (Game.best.score > 0) {
+    ctx.fillStyle = "rgba(20,45,75,.4)";
+    rrect(ctx, CW / 2 - 118, 622, 236, 56, 16); ctx.fill();
+    text("BEST", CW / 2, 640, 11, "rgba(255,255,255,.7)", "center");
+    text(Game.best.score + " 점 · " + Game.best.gold + " G · STAGE " + Game.best.stage,
+         CW / 2, 661, 14, "#ffd76a", "center");
+  }
+  text("드래그 · ← → · A D 이동   |   미사일 자동 발사", CW / 2, 706, 12, "rgba(255,255,255,.85)", "center", 700);
+  text("게이지가 차면 좌하단 버튼 · Space 로 필살기!", CW / 2, 724, 12, "#ffd76a", "center", 700);
+  text("골드를 모으면 FEVER — 화면을 가르는 초대형 레이저!", CW / 2, 742, 12, "#ff9ec4", "center", 700);
+  text("M 음악 켜기/끄기   ·   P 일시정지", CW / 2, 762, 12, "rgba(255,255,255,.7)", "center", 700);
+}
+
+/* ── 게임 오버 / 일시정지 ──────────────────────────────────────────────── */
+function drawGameOver() {
+  ctx.fillStyle = "rgba(16,36,60,.72)";
+  ctx.fillRect(0, 0, CW, CH);
+  const x = CW / 2, y = 250;
+  ctx.fillStyle = "rgba(255,255,255,.96)";
+  rrect(ctx, 40, y, CW - 80, 300, 26); ctx.fill();
+  ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = 4;
+  rrect(ctx, 40, y, CW - 80, 300, 26); ctx.stroke();
+
+  text("GAME OVER", x, y + 52, 34, "#ff7a90", "center");
+
+  if (Game.newRecord) {                            // 신기록 배지
+    const s = 1 + Math.sin(Game.timer * 8) * 0.05;
+    ctx.save();
+    ctx.translate(x, y + 92); ctx.scale(s, s);
+    ctx.fillStyle = "#ffd76a";
+    rrect(ctx, -68, -14, 136, 28, 14); ctx.fill();
+    text("NEW RECORD!", 0, 1, 15, "#7a5a10", "center");
+    ctx.restore();
+  } else {
+    text("최고 " + (Game.best.score || 0) + "점", x, y + 92, 14, "#8c7f96", "center", 700);
+  }
+
+  const rows = [["점수", Game.score, "#3d3145"], ["골드", Game.gold + " G", "#e0a52c"],
+                ["도달 스테이지", "STAGE " + Game.stage, "#3fa87a"],
+                ["비행 거리", Math.floor(Game.distance) + " m", "#5a7fa8"]];
+  rows.forEach(([label, value, color], i) => {
+    const ry = y + 132 + i * 34;
+    text(label, 76, ry, 13, "#8c7f96", "left", 700);
+    text(String(value), CW - 76, ry, 17, color, "right");
+  });
+
+  ctx.globalAlpha = Game.overT > 0 ? 0.3 : 0.55 + Math.abs(Math.sin(Game.timer * 3)) * 0.45;
+  text("탭 또는 Space 로 캐릭터 선택", x, y + 272, 15, "#ff6f9c", "center");
+  ctx.globalAlpha = 1;
+}
+
+function drawPause() {
+  ctx.fillStyle = "rgba(16,36,60,.6)";
+  ctx.fillRect(0, 0, CW, CH);
+  text("PAUSED", CW / 2, CH / 2 - 10, 34, "#ffffff", "center");
+  text("P 키 또는 탭으로 계속하기", CW / 2, CH / 2 + 28, 14, "#dceaf7", "center", 700);
+}
+
+/* ── 메인 드로우 ───────────────────────────────────────────────────────── */
+function draw(dt) {
+  drawSky(dt);
+
+  ctx.save();
+  if (Game.shake > 0) ctx.translate(rand(-Game.shake, Game.shake), rand(-Game.shake, Game.shake));
+
+  if (Game.state === "playing" || Game.state === "paused" || Game.state === "over") {
+    for (const d of Game.drops) drawDrop(d);
+
+    for (const f of Game.formations) {              // 편대 대형을 잇는 실선
+      const live = f.members.filter(m => !m.dead && !m.gone);
+      if (live.length < 2) continue;
+      ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 6]); ctx.lineDashOffset = -Game.timer * 22;
+      for (const m of live) {
+        ctx.beginPath(); ctx.moveTo(f.cx, f.cy); ctx.lineTo(m.x, m.y); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,.5)";
+      ctx.beginPath(); ctx.arc(f.cx, f.cy, 3.5, 0, TAU); ctx.fill();
+    }
+
+    drawDiveWarn();                                 // 낙하 예고는 적들 아래에 깔린다
+    for (const e of Game.enemies) drawEnemy(e);
+    for (const b of Game.bullets) drawBullet(b);
+    drawBolts();
+
+    const p = Game.player;
+    if (p && Game.state !== "over") {
+      if (p.inv > 0 && Math.floor(p.inv * 12) % 2 === 0) ctx.globalAlpha = 0.4;
+      drawDrones();
+      drawPet(Game.pet, p.x, p.y, 1, p.flap, p.tilt, true, null, Game.stage >= TIER_STAGE[3]);
+      ctx.globalAlpha = 1;
+      if (p.shield > 0) {                          // 실드 버블
+        /* 남은 시간이 SHIELD_WARN 아래로 떨어지면 깜빡이기 시작하고,
+         * 끝에 가까울수록 깜빡임이 빨라진다(1.8Hz → 9Hz). */
+        const left = p.shieldT;
+        let a = 1;
+        if (left < SHIELD_WARN) {
+          const u = clamp(left / SHIELD_WARN, 0, 1);       // 1 → 0
+          const hz = 1.8 + (1 - u) * 7.2;
+          a = 0.22 + (0.5 + 0.5 * Math.sin(Game.timer * TAU * hz)) * 0.78;
+        }
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = "rgba(104,230,176,.9)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y - 2, 34 + Math.sin(Game.timer * 6) * 2, 0, TAU); ctx.stroke();
+        ctx.fillStyle = "rgba(104,230,176,.14)";
+        ctx.beginPath(); ctx.arc(p.x, p.y - 2, 34, 0, TAU); ctx.fill();
+
+        ctx.globalAlpha = a * 0.85;                        // 남은 시간을 도는 호로 표시
+        ctx.strokeStyle = "#a7f0c6"; ctx.lineWidth = 3.4; ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y - 2, 39, -Math.PI / 2,
+                -Math.PI / 2 + TAU * clamp(p.shieldT / SHIELD_TIME, 0, 1));
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (p.rapidT > 0) {                          // 연사 강화 오라 — 위로 흐르는 속도선
+        ctx.save();
+        ctx.globalAlpha = 0.5 + Math.sin(Game.timer * 18) * 0.2;
+        ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+        for (let i = 0; i < 6; i++) {
+          const sx = p.x + (i % 2 ? 1 : -1) * (20 + (i >> 1) * 11);
+          const sy = p.y + 8 + ((Game.timer * 520 + i * 27) % 46);
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + 13); ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if (p.magnet > 0) {                          // 자석 범위
+        ctx.strokeStyle = "rgba(126,200,245,.35)"; ctx.lineWidth = 2;
+        ctx.setLineDash([7, 9]); ctx.lineDashOffset = -Game.timer * 40;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 90, 0, TAU); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    drawUpgradeFx();
+    drawParticles();
+    drawFeverFx();
+    drawUltFx();
+  }
+  ctx.restore();
+
+  if (Game.state === "title") drawTitle();
+  else if (Game.state === "select") drawSelect();
+  else {
+    drawHUD();
+    if (Game.state === "playing" || Game.state === "paused") {
+      drawUltButton();
+      drawDevCorner();
+      drawBossBar();
+      drawBanners();
+    }
+    if (Game.state === "over") drawGameOver();
+    if (Game.state === "paused") drawPause();
+  }
+}
+
+/* =========================================================================
+ * 게임 루프
+ * ========================================================================= */
+let last = 0;
+function frame(ts) {
+  if (!last) last = ts;
+  let dt = (ts - last) / 1000;
+  last = ts;
+  if (dt > 0.05) dt = 0.05;              // 탭 전환 뒤 물리가 튀는 것 방지
+  update(dt);
+  draw(dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>

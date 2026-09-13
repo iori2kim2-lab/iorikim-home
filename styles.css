@@ -176,9 +176,16 @@ header.site {
   margin: 0 auto;
 }
 
+.section-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 8px 0 0;
+}
+
 /* Tools grid */
 .tools {
-  padding: 40px 0 100px;
+  padding: 20px 0 40px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
