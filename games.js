@@ -19,13 +19,21 @@
   }
 
   function renderGame(game) {
+    var preview = game.preview
+      ? '<img class="tool-preview" src="' + escapeHtml(game.preview) + '" alt="" />'
+      : "";
     return [
       '<a class="tool-card" href="games/' + encodeURIComponent(game.file) + '">',
-      '<div class="tool-icon">' + escapeHtml(game.icon || "🎮") + "</div>",
+      preview,
+      '<div class="tool-card-body">',
+      '<div class="tool-title-row">',
+      '<span class="tool-emoji">' + escapeHtml(game.icon || "🎮") + "</span>",
       "<h3>" + escapeHtml(game.title || "이름 없는 게임") + "</h3>",
+      "</div>",
       "<p>" + escapeHtml(game.description || "") + "</p>",
       '<div class="badge-row"><span class="badge">무료</span><span class="badge">게임</span></div>',
       '<span class="tool-cta">플레이하기 →</span>',
+      "</div>",
       "</a>",
     ].join("");
   }

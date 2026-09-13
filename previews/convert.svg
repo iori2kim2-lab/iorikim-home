@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f3fc2"/>
+      <stop offset="1" stop-color="#8b7bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" fill="url(#bg)"/>
+
+  <g transform="translate(105,140)">
+    <rect x="-70" y="-45" width="140" height="90" rx="16" fill="#ffffff"/>
+    <text x="0" y="10" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="26" fill="#5b4bd6">HEIC</text>
+  </g>
+
+  <g transform="translate(375,140)">
+    <rect x="-70" y="-45" width="140" height="90" rx="16" fill="#ffffff" fill-opacity="0.95"/>
+    <text x="0" y="10" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="26" fill="#5b4bd6">JPG</text>
+  </g>
+
+  <g transform="translate(240,140)">
+    <circle r="34" fill="#ffe08a"/>
+    <path d="M-14 -4 A16 16 0 1 1 -14 8" stroke="#5b4bd6" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M-14 -4 L-14 -14 M-14 -4 L-4 -4" stroke="#5b4bd6" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14 4 A16 16 0 1 1 14 -8" stroke="#5b4bd6" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M14 4 L14 14 M14 4 L4 4" stroke="#5b4bd6" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

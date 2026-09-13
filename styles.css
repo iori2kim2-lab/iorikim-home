@@ -195,16 +195,48 @@ header.site {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 28px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tool-card:not(.disabled):hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow);
+}
+
+.tool-preview {
+  width: 100%;
+  aspect-ratio: 12 / 7;
+  object-fit: cover;
+  display: block;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-card-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-grow: 1;
+}
+
+.tool-card.disabled {
+  padding: 28px;
+  gap: 14px;
+}
+
+.tool-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-emoji {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .tool-icon {
