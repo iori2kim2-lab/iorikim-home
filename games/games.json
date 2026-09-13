@@ -15,5 +15,22 @@
     "icon": "🐾",
     "file": "pet-flight.html",
     "preview": "../previews/pet-flight.svg"
+  },
+  {
+    "title": {
+      "ko": "모찌 오목 AI",
+      "en": "Mochi Gomoku AI",
+      "ja": "もち五目AI",
+      "zh": "麻糬五子棋AI"
+    },
+    "description": {
+      "ko": "귀여운 캐릭터와 함께하는 오목 대결. 난이도를 골라 AI를 상대로 다섯 개를 먼저 이어보세요.",
+      "en": "A cute Gomoku showdown — pick a difficulty and try to connect five in a row before the AI does.",
+      "ja": "かわいいキャラと対戦する五目並べ。難易度を選んでAIより先に五つ並べよう。",
+      "zh": "和可爱角色对战的五子棋游戏，选择难度，抢先连成五子吧。"
+    },
+    "icon": "🐰",
+    "file": "gomoku.html",
+    "preview": "../previews/gomoku.svg"
   }
 ]
