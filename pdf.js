@@ -258,4 +258,202 @@
   document.addEventListener("langchange", function () {
     if (items.length) renderFileList();
   });
+
+  // ---- mode tabs (이미지 → PDF / PDF → 이미지) ----
+  var pdfModeTabs = document.getElementById("pdfModeTabs");
+  var img2pdfSection = document.getElementById("img2pdfSection");
+  var pdf2imgSection = document.getElementById("pdf2imgSection");
+
+  pdfModeTabs.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    var mode = btn.dataset.mode;
+    pdfModeTabs.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+    img2pdfSection.style.display = mode === "img2pdf" ? "" : "none";
+    pdf2imgSection.style.display = mode === "pdf2img" ? "" : "none";
+  });
+
+  // ---- PDF → images ----
+  var pdfDropzone = document.getElementById("pdfDropzone");
+  var pdfFileInput = document.getElementById("pdfFileInput");
+  var pdf2imgControls = document.getElementById("pdf2imgControls");
+  var pdfInfo = document.getElementById("pdfInfo");
+  var pdf2imgFormatSelect = document.getElementById("pdf2imgFormatSelect");
+  var pdf2imgQualityField = document.getElementById("pdf2imgQualityField");
+  var pdf2imgQualityRange = document.getElementById("pdf2imgQualityRange");
+  var pdf2imgQualityValue = document.getElementById("pdf2imgQualityValue");
+  var pdf2imgScaleSelect = document.getElementById("pdf2imgScaleSelect");
+  var pdf2imgBtn = document.getElementById("pdf2imgBtn");
+  var pdf2imgResult = document.getElementById("pdf2imgResult");
+  var pdf2imgSummary = document.getElementById("pdf2imgSummary");
+  var pdf2imgGrid = document.getElementById("pdf2imgGrid");
+  var pdf2imgZipBtn = document.getElementById("pdf2imgZipBtn");
+
+  var pdfDoc = null;
+  var pdfFileName = "document";
+
+  var pdfjsModulePromise = null;
+  function loadPdfjs() {
+    if (!pdfjsModulePromise) {
+      pdfjsModulePromise = import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.min.mjs").then(
+        function (mod) {
+          // The worker must be same-origin: browsers refuse to construct a
+          // Worker from a cross-origin script URL, so it's self-hosted here.
+          mod.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
+          return mod;
+        }
+      );
+    }
+    return pdfjsModulePromise;
+  }
+
+  pdfDropzone.addEventListener("click", function () {
+    pdfFileInput.click();
+  });
+
+  ["dragover", "dragenter"].forEach(function (evt) {
+    pdfDropzone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      pdfDropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(function (evt) {
+    pdfDropzone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      pdfDropzone.classList.remove("dragover");
+    });
+  });
+
+  pdfDropzone.addEventListener("drop", function (e) {
+    var file = e.dataTransfer.files[0];
+    if (file) handlePdfFile(file);
+  });
+
+  pdfFileInput.addEventListener("change", function () {
+    if (pdfFileInput.files[0]) handlePdfFile(pdfFileInput.files[0]);
+    pdfFileInput.value = "";
+  });
+
+  var pdfDropzoneTitle = pdfDropzone.querySelector("strong");
+
+  async function handlePdfFile(file) {
+    var name = (file.name || "").toLowerCase();
+    var isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+    if (!isPdf) {
+      alert(t("pdf.pdfOnlyAlert"));
+      return;
+    }
+
+    pdfFileName = (file.name || "document").replace(/\.[^.]+$/, "");
+    pdfDropzoneTitle.textContent = t("common.loading");
+    pdf2imgResult.classList.remove("visible");
+
+    try {
+      var pdfjsLib = await loadPdfjs();
+      var buffer = await file.arrayBuffer();
+      var loadingTask = pdfjsLib.getDocument({ data: buffer });
+      pdfDoc = await loadingTask.promise;
+
+      pdfInfo.textContent = t("pdf.pdfPageCount", { count: pdfDoc.numPages, name: file.name });
+      pdf2imgControls.style.display = "grid";
+    } catch (err) {
+      console.error(err);
+      alert(t("pdf.pdfLoadFailAlert"));
+      pdfDoc = null;
+    } finally {
+      pdfDropzoneTitle.textContent = t("pdf.pdfDropzoneDefault");
+    }
+  }
+
+  function updatePdf2imgQualityVisibility() {
+    pdf2imgQualityField.style.display = pdf2imgFormatSelect.value === "image/png" ? "none" : "grid";
+  }
+  pdf2imgFormatSelect.addEventListener("change", updatePdf2imgQualityVisibility);
+  pdf2imgQualityRange.addEventListener("input", function () {
+    pdf2imgQualityValue.textContent = pdf2imgQualityRange.value;
+  });
+
+  pdf2imgBtn.addEventListener("click", async function () {
+    if (!pdfDoc) return;
+    pdf2imgBtn.disabled = true;
+    pdf2imgBtn.textContent = t("pdf.convertingToImages");
+    pdf2imgGrid.innerHTML = "";
+
+    try {
+      var pdfjsLib = await loadPdfjs();
+      var scale = Number(pdf2imgScaleSelect.value) || 2;
+      var mime = pdf2imgFormatSelect.value;
+      var quality = Number(pdf2imgQualityRange.value) / 100;
+      var ext = mime === "image/png" ? "png" : "jpg";
+
+      var zip = new JSZip();
+      var totalBytes = 0;
+
+      for (var i = 1; i <= pdfDoc.numPages; i++) {
+        var page = await pdfDoc.getPage(i);
+        var viewport = page.getViewport({ scale: scale });
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        var ctx = canvas.getContext("2d");
+        if (mime === "image/jpeg") {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        var blob = await new Promise(function (resolve) {
+          canvas.toBlob(resolve, mime, quality);
+        });
+        if (!blob) continue;
+        totalBytes += blob.size;
+
+        var pageFileName = pdfFileName + "-p" + String(i).padStart(2, "0") + "." + ext;
+        zip.file(pageFileName, blob);
+
+        var url = URL.createObjectURL(blob);
+        var fig = document.createElement("figure");
+        fig.innerHTML =
+          '<img src="' + url + '" alt="page ' + i + '" data-lightbox />' +
+          "<figcaption><b>" +
+          t("pdf.pageLabel", { n: i }) +
+          "</b>" +
+          canvas.width +
+          "×" +
+          canvas.height +
+          "px · " +
+          formatBytes(blob.size) +
+          "</figcaption>" +
+          '<a class="page-download" href="' +
+          url +
+          '" download="' +
+          pageFileName +
+          '">' +
+          t("common.downloadBtn") +
+          "</a>";
+        pdf2imgGrid.appendChild(fig);
+      }
+
+      var zipBlob = await zip.generateAsync({ type: "blob" });
+      var zipUrl = URL.createObjectURL(zipBlob);
+      pdf2imgZipBtn.href = zipUrl;
+      pdf2imgZipBtn.download = pdfFileName + "-images.zip";
+      pdf2imgSummary.textContent = t("pdf.imagesSummary", {
+        count: pdfDoc.numPages,
+        size: formatBytes(zipBlob.size),
+      });
+
+      pdf2imgResult.classList.add("visible");
+      pdf2imgResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (err) {
+      console.error(err);
+      alert(t("pdf.pdf2imgFailAlert"));
+    } finally {
+      pdf2imgBtn.disabled = false;
+      pdf2imgBtn.textContent = t("pdf.pdf2imgBtn");
+    }
+  });
 })();

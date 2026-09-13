@@ -21,6 +21,10 @@
   var afterDims = document.getElementById("afterDims");
   var saveStat = document.getElementById("saveStat");
   var downloadBtn = document.getElementById("downloadBtn");
+  var sendToUpscaleBtn = document.getElementById("sendToUpscaleBtn");
+
+  var lastConvertedBlob = null;
+  var lastConvertedName = null;
 
   var dropzoneTitle = dropzone.querySelector("strong");
 
@@ -160,6 +164,8 @@
       afterFigure.hidden = true;
       statsRow.hidden = true;
       downloadBtn.hidden = true;
+      sendToUpscaleBtn.hidden = true;
+      lastConvertedBlob = null;
       result.classList.add("visible");
       updateQualityVisibility();
     } catch (err) {
@@ -222,13 +228,39 @@
         downloadBtn.href = url;
         downloadBtn.download = baseName + "." + ext;
 
+        lastConvertedBlob = blob;
+        lastConvertedName = baseName + "." + ext;
+
         afterFigure.hidden = false;
         statsRow.hidden = false;
         downloadBtn.hidden = false;
+        sendToUpscaleBtn.hidden = false;
         afterFigure.scrollIntoView({ behavior: "smooth", block: "nearest" });
       },
       outMime,
       quality
     );
+  });
+
+  sendToUpscaleBtn.addEventListener("click", function () {
+    if (!lastConvertedBlob) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        sessionStorage.setItem(
+          "iorikim-handoff",
+          JSON.stringify({ dataUrl: reader.result, name: lastConvertedName })
+        );
+      } catch (err) {
+        console.error(err);
+        alert(t("convert.sendToUpscaleFailAlert"));
+      }
+      window.location.href = "upscale.html";
+    };
+    reader.onerror = function () {
+      alert(t("convert.sendToUpscaleFailAlert"));
+      window.location.href = "upscale.html";
+    };
+    reader.readAsDataURL(lastConvertedBlob);
   });
 })();

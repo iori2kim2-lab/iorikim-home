@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>이미지를 PDF로 — iorikim</title>
-<meta name="description" content="여러 장의 사진을 골라서 PDF 한 파일로 합쳐보세요. 브라우저 안에서 바로 처리됩니다." />
+<title>이미지 ↔ PDF — iorikim</title>
+<meta name="description" content="여러 장의 사진을 PDF로 합치거나, PDF를 다시 이미지로 뽑아보세요. 브라우저 안에서 바로 처리됩니다." />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
 <link rel="stylesheet" href="styles.css" />
@@ -28,39 +28,93 @@
 <section class="wrap tool-page">
   <div class="tool-page-header">
     <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
-    <h1><span class="tool-emoji">📄</span> <span data-i18n="pdf.title">이미지를 PDF로</span></h1>
-    <p data-i18n="pdf.pageDesc">여러 장의 사진(HEIC 포함)을 골라서 PDF 한 파일로 합쳐드려요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+    <h1><span class="tool-emoji">📄</span> <span data-i18n="pdf.title">이미지 ↔ PDF</span></h1>
+    <p data-i18n="pdf.pageDesc">여러 장의 사진(HEIC 포함)을 PDF로 합치거나, PDF를 다시 이미지로 뽑아낼 수 있어요. 이미지는 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
   </div>
 
   <div class="panel">
-    <div class="dropzone" id="dropzone">
-      <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
-      <p data-i18n="pdf.dropzoneHint">여러 장 한 번에 선택 가능 · JPG, PNG, WebP, HEIC 지원</p>
-      <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden />
+    <div class="field">
+      <div class="mode-tabs" id="pdfModeTabs">
+        <button data-mode="img2pdf" class="active" data-i18n="pdf.modeImgToPdf">이미지 → PDF</button>
+        <button data-mode="pdf2img" data-i18n="pdf.modePdfToImg">PDF → 이미지</button>
+      </div>
     </div>
 
-    <div class="controls" id="controls" style="display:none;">
-      <div class="field">
-        <label id="fileListLabel"></label>
-        <div class="file-list" id="fileList"></div>
+    <div id="img2pdfSection">
+      <div class="dropzone" id="dropzone">
+        <p><strong data-i18n="common.dropzoneDefault">클릭하거나 이미지를 끌어다 놓으세요</strong></p>
+        <p data-i18n="pdf.dropzoneHint">여러 장 한 번에 선택 가능 · JPG, PNG, WebP, HEIC 지원</p>
+        <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden />
       </div>
 
-      <div class="field">
-        <label data-i18n="pdf.pageSizeLabel">페이지 크기</label>
-        <select id="pageSizeSelect">
-          <option value="a4">A4</option>
-          <option value="letter">Letter</option>
-          <option value="fit" data-i18n="pdf.pageSizeFit">이미지 크기 그대로</option>
-        </select>
+      <div class="controls" id="controls" style="display:none;">
+        <div class="field">
+          <label id="fileListLabel"></label>
+          <div class="file-list" id="fileList"></div>
+        </div>
+
+        <div class="field">
+          <label data-i18n="pdf.pageSizeLabel">페이지 크기</label>
+          <select id="pageSizeSelect">
+            <option value="a4">A4</option>
+            <option value="letter">Letter</option>
+            <option value="fit" data-i18n="pdf.pageSizeFit">이미지 크기 그대로</option>
+          </select>
+        </div>
+
+        <button class="primary-btn" id="makePdfBtn" data-i18n="pdf.makePdfBtn">PDF로 합치기</button>
       </div>
 
-      <button class="primary-btn" id="makePdfBtn" data-i18n="pdf.makePdfBtn">PDF로 합치기</button>
+      <div class="result" id="result">
+        <p class="hint" id="pdfSummary" style="text-align:left;margin:0;"></p>
+        <a class="primary-btn download-btn" id="downloadBtn" download data-i18n="pdf.downloadPdfBtn">PDF 다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
     </div>
 
-    <div class="result" id="result">
-      <p class="hint" id="pdfSummary" style="text-align:left;margin:0;"></p>
-      <a class="primary-btn download-btn" id="downloadBtn" download data-i18n="pdf.downloadPdfBtn">PDF 다운로드</a>
-      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+    <div id="pdf2imgSection" style="display:none;">
+      <div class="dropzone" id="pdfDropzone">
+        <p><strong data-i18n="pdf.pdfDropzoneDefault">클릭하거나 PDF를 끌어다 놓으세요</strong></p>
+        <p data-i18n="pdf.pdfDropzoneHint">PDF 파일 1개 지원</p>
+        <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" hidden />
+      </div>
+
+      <div class="controls" id="pdf2imgControls" style="display:none;">
+        <div class="field">
+          <p class="hint" id="pdfInfo" style="text-align:left;margin:0;"></p>
+        </div>
+
+        <div class="field">
+          <label data-i18n="resize.formatLabel">출력 형식</label>
+          <select id="pdf2imgFormatSelect">
+            <option value="image/png">PNG</option>
+            <option value="image/jpeg">JPEG</option>
+          </select>
+        </div>
+
+        <div class="field" id="pdf2imgQualityField" style="display:none;">
+          <label><span data-i18n="resize.qualityLabelPrefix">품질: </span><span id="pdf2imgQualityValue">85</span>%</label>
+          <input type="range" id="pdf2imgQualityRange" min="10" max="100" value="85" />
+        </div>
+
+        <div class="field">
+          <label data-i18n="pdf.resolutionLabel">해상도</label>
+          <select id="pdf2imgScaleSelect">
+            <option value="2" data-i18n="pdf.resolutionStandard">보통 (약 150dpi)</option>
+            <option value="3" selected data-i18n="pdf.resolutionHigh">높음 (약 220dpi)</option>
+            <option value="4" data-i18n="pdf.resolutionBest">최고 (약 300dpi)</option>
+          </select>
+        </div>
+
+        <button class="primary-btn" id="pdf2imgBtn" data-i18n="pdf.pdf2imgBtn">이미지로 변환하기</button>
+      </div>
+
+      <div class="result" id="pdf2imgResult">
+        <p class="hint" id="pdf2imgSummary" style="text-align:left;margin:0 0 4px;"></p>
+        <div class="icon-grid" id="pdf2imgGrid"></div>
+        <a class="primary-btn download-btn" id="pdf2imgZipBtn" download data-i18n="pdf.downloadZipBtn">ZIP으로 전체 다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -71,9 +125,11 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="i18n-data.js"></script>
 <script src="i18n.js"></script>
 <script src="theme.js"></script>
+<script src="lightbox.js"></script>
 <script src="pdf.js"></script>
 </body>
 </html>
