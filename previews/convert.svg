@@ -9,7 +9,7 @@
 
   <g transform="translate(105,140)">
     <rect x="-70" y="-45" width="140" height="90" rx="16" fill="#ffffff"/>
-    <text x="0" y="10" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="26" fill="#5b4bd6">HEIC</text>
+    <text x="0" y="10" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="26" fill="#5b4bd6">PSD</text>
   </g>
 
   <g transform="translate(375,140)">
