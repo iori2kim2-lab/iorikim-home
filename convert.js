@@ -351,7 +351,9 @@
       var fig = document.createElement("figure");
       fig.innerHTML =
         '<img src="' + url + '" alt="" data-lightbox />' +
-        "<figcaption><b>" +
+        '<figcaption><b title="' +
+        escapeHtml(fileName) +
+        '">' +
         escapeHtml(fileName) +
         "</b>" +
         res.width +
