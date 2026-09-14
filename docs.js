@@ -82,16 +82,24 @@
     excel: document.getElementById("excelSection"),
     text: document.getElementById("textSection"),
   };
-  modeTabs.addEventListener("click", function (e) {
-    var btn = e.target.closest("button");
-    if (!btn) return;
-    var mode = btn.dataset.mode;
+  // Cross-tab file routing: a file dropped on the wrong tab gets handed to
+  // the right one instead of just showing an alert. Populated once each
+  // section's IIFE below defines its own handleFile.
+  var handlers = {};
+
+  function switchMode(mode) {
     modeTabs.querySelectorAll("button").forEach(function (b) {
-      b.classList.toggle("active", b === btn);
+      b.classList.toggle("active", b.dataset.mode === mode);
     });
     Object.keys(sections).forEach(function (key) {
       sections[key].style.display = key === mode ? "" : "none";
     });
+  }
+
+  modeTabs.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    switchMode(btn.dataset.mode);
   });
 
   // ==================== Word -> PDF ====================
@@ -135,6 +143,11 @@
     async function handleFile(file) {
       var name = (file.name || "").toLowerCase();
       if (!name.endsWith(".docx")) {
+        if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+          switchMode("excel");
+          handlers.excel(file);
+          return;
+        }
         alert(t("docs.wordOnlyAlert"));
         return;
       }
@@ -179,6 +192,8 @@
         convertBtn.textContent = t("docs.convertToPdfBtn");
       }
     });
+
+    handlers.word = handleFile;
   })();
 
   // ==================== Excel <-> CSV ====================
@@ -224,6 +239,11 @@
       var isCsv = name.endsWith(".csv");
       var isExcel = name.endsWith(".xlsx") || name.endsWith(".xls");
       if (!isCsv && !isExcel) {
+        if (name.endsWith(".docx")) {
+          switchMode("word");
+          handlers.word(file);
+          return;
+        }
         alert(t("docs.excelOnlyAlert"));
         return;
       }
@@ -281,6 +301,8 @@
         convertBtn.textContent = direction === "toXlsx" ? t("docs.excelConvertToXlsxBtn") : t("docs.excelConvertToCsvBtn");
       }
     });
+
+    handlers.excel = handleFile;
   })();
 
   // ==================== Text -> PDF ====================

@@ -66,5 +66,22 @@
     "icon": "🎱",
     "file": "pocket-lounge.html",
     "preview": "../previews/pocket-lounge.svg"
+  },
+  {
+    "title": {
+      "ko": "몽글몽글 벽돌깨기",
+      "en": "Moongle Brick Breakout",
+      "ja": "もこもこブロック崩し",
+      "zh": "软萌打砖块"
+    },
+    "description": {
+      "ko": "20개 스테이지를 깨는 파스텔 벽돌깨기. 드래그나 ← → 로 이동하고 스페이스바로 공을 발사하세요.",
+      "en": "A pastel brick breaker with 20 stages — drag or use ← → to move, and Space to launch the ball.",
+      "ja": "20ステージのパステルブロック崩し。ドラッグまたは←→で移動し、スペースキーでボールを発射。",
+      "zh": "共20关的粉彩打砖块游戏，拖拽或按←→移动,按空格键发射球。"
+    },
+    "icon": "🧱",
+    "file": "brick-breakout.html",
+    "preview": "../previews/brick-breakout.svg"
   }
 ]
