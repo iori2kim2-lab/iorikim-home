@@ -482,6 +482,19 @@ input[type="range"] {
   accent-color: var(--accent-1);
 }
 
+.textarea-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  resize: vertical;
+  min-height: 160px;
+}
+
 .mode-tabs {
   display: flex;
   background: var(--bg);

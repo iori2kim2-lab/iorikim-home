@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>문서 변환기 — iorikim</title>
+<meta name="description" content="Word 문서를 PDF로, Excel과 CSV를 서로, 텍스트를 PDF로 바꿔보세요. 브라우저 안에서 바로 처리됩니다." />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%236d5bff%22/><text x=%2250%22 y=%2266%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22800%22>io</text></svg>" />
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "3cc28db5dffd4206983e938497275c25"}'></script><!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-nav">
+    <a href="index.html" class="brand">
+      <span class="brand-badge">io</span>
+      iorikim
+    </a>
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+      <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap tool-page">
+  <div class="tool-page-header">
+    <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
+    <h1><span class="tool-emoji">📃</span> <span data-i18n="docs.title">문서 변환기</span></h1>
+    <p data-i18n="docs.pageDesc">Word 문서를 PDF로, Excel과 CSV를 서로, 텍스트를 PDF로 바꿔드려요. 파일은 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <div class="mode-tabs" id="docsModeTabs">
+        <button data-mode="word" class="active" data-i18n="docs.modeWordToPdf">Word → PDF</button>
+        <button data-mode="excel" data-i18n="docs.modeExcelCsv">Excel ↔ CSV</button>
+        <button data-mode="text" data-i18n="docs.modeTextToPdf">텍스트 → PDF</button>
+      </div>
+    </div>
+
+    <!-- Word -> PDF -->
+    <div id="wordSection">
+      <div class="dropzone" id="wordDropzone">
+        <p><strong data-i18n="docs.wordDropzoneDefault">클릭하거나 Word 파일을 끌어다 놓으세요</strong></p>
+        <p data-i18n="docs.wordDropzoneHint">.docx 파일 지원</p>
+        <input type="file" id="wordFileInput" accept=".docx" hidden />
+      </div>
+
+      <div class="controls" id="wordControls" style="display:none;">
+        <div class="field">
+          <p class="hint" id="wordFileInfo" style="text-align:left;margin:0;"></p>
+        </div>
+        <button class="primary-btn" id="wordConvertBtn" data-i18n="docs.convertToPdfBtn">PDF로 변환하기</button>
+        <p class="hint" data-i18n="docs.wordFormatHint">표나 이미지가 복잡한 문서는 서식이 단순화될 수 있어요.</p>
+      </div>
+
+      <div class="result" id="wordResult">
+        <p class="hint" id="wordSummary" style="text-align:left;margin:0;"></p>
+        <a class="primary-btn download-btn" id="wordDownloadBtn" download hidden data-i18n="common.downloadBtn">다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
+    </div>
+
+    <!-- Excel <-> CSV -->
+    <div id="excelSection" style="display:none;">
+      <div class="dropzone" id="excelDropzone">
+        <p><strong data-i18n="docs.excelDropzoneDefault">클릭하거나 Excel·CSV 파일을 끌어다 놓으세요</strong></p>
+        <p data-i18n="docs.excelDropzoneHint">.xlsx, .xls, .csv 지원 · Excel은 CSV로, CSV는 Excel로 바뀌어요</p>
+        <input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" hidden />
+      </div>
+
+      <div class="controls" id="excelControls" style="display:none;">
+        <div class="field">
+          <p class="hint" id="excelFileInfo" style="text-align:left;margin:0;"></p>
+        </div>
+        <button class="primary-btn" id="excelConvertBtn" data-i18n="docs.excelConvertBtn">변환하기</button>
+        <p class="hint" data-i18n="docs.excelSheetHint">여러 시트가 있으면 첫 번째 시트만 변환돼요.</p>
+      </div>
+
+      <div class="result" id="excelResult">
+        <p class="hint" id="excelSummary" style="text-align:left;margin:0;"></p>
+        <a class="primary-btn download-btn" id="excelDownloadBtn" download hidden data-i18n="common.downloadBtn">다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
+    </div>
+
+    <!-- Text -> PDF -->
+    <div id="textSection" style="display:none;">
+      <div class="field">
+        <label data-i18n="docs.textareaLabel">텍스트 (또는 .txt, .md 파일 불러오기)</label>
+        <textarea id="textInput" class="textarea-input" rows="10" data-i18n-attr="placeholder:docs.textareaPlaceholder" placeholder="여기에 텍스트를 붙여넣으세요…"></textarea>
+      </div>
+      <div class="field">
+        <button class="secondary-btn" id="textFileBtn" data-i18n="docs.loadTextFileBtn">📄 텍스트 파일 불러오기</button>
+        <input type="file" id="textFileInput" accept=".txt,.md" hidden />
+      </div>
+
+      <div class="controls" id="textControls">
+        <button class="primary-btn" id="textConvertBtn" data-i18n="docs.convertToPdfBtn">PDF로 변환하기</button>
+      </div>
+
+      <div class="result" id="textResult">
+        <p class="hint" id="textSummary" style="text-align:left;margin:0;"></p>
+        <a class="primary-btn download-btn" id="textDownloadBtn" download hidden data-i18n="common.downloadBtn">다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap" data-i18n="common.footer">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.9.1/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
+<script src="theme.js"></script>
+<script src="docs.js"></script>
+</body>
+</html>
