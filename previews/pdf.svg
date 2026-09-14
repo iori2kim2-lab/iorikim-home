@@ -19,8 +19,9 @@
     <path d="M-40 30 L-14 0 L6 20 L20 4 L40 30 Z" fill="#8b7bff"/>
   </g>
 
-  <path d="M180 148 L300 148" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 14"/>
-  <path d="M285 126 L312 148 L285 170" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M198 148 L282 148" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 14"/>
+  <path d="M205 126 L178 148 L205 170" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M275 126 L302 148 L275 170" stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 
   <g transform="translate(370,148)">
     <path d="M-52 -76 L20 -76 L52 -44 L52 76 L-52 76 Z" fill="#ffffff"/>
