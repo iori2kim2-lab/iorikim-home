@@ -939,3 +939,25 @@ input[type="range"] {
     min-width: 0;
   }
 }
+
+.cf-admin-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 999;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.cf-admin-btn:hover {
+  opacity: 0.9;
+}
