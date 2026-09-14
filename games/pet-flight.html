@@ -26,13 +26,29 @@
   }
   .tip { margin: 0; font-size: 12.5px; color: #cfe4f5; letter-spacing: .02em; }
   .tip b { color: #ffd76a; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 10px; position: relative; }
+  .records { position: absolute; left: calc(100% + 20px); top: 50%; transform: translateY(-50%); width: 190px; text-align: left; background: #132a44; color: #dceaf7; border-radius: 18px; padding: 16px; box-shadow: 0 14px 35px rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.12); }
+  .records h2 { margin: 0 0 10px; font-size: 1.05rem; color: #ffd76a; }
+  .records .score-list { min-height: 90px; }
+  .records .score-list p { margin: 5px 0; border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 4px; font-size: .82rem; }
+  .records input { width: 100%; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: #fff; border-radius: 8px; padding: 7px; margin: 8px 0; font: inherit; box-sizing: border-box; }
+  .records button { width: 100%; border: 0; border-radius: 8px; background: #ffd76a; color: #432b00; font-weight: 700; padding: 8px; cursor: pointer; font: inherit; }
+  @media (max-width: 900px) { .records { position: static; transform: none; width: min(94vw, 420px); margin-top: 4px; } }
 </style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "3cc28db5dffd4206983e938497275c25"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
 <body>
   <a href="../index.html" data-i18n="common.backHome" style="position:fixed;top:12px;left:12px;z-index:9999;background:rgba(15,14,23,.55);color:#fff;font:700 13px/1 'Apple SD Gothic Neo',sans-serif;padding:9px 14px;border-radius:999px;text-decoration:none;backdrop-filter:blur(6px);">← 홈으로</a>
-  <canvas id="game" width="450" height="800"></canvas>
-  <p class="tip" data-i18n="game.tip" data-i18n-html><b>드래그 · ← → · A D</b> 좌우 이동 · 미사일은 <b>자동 발사</b> · <b>Space</b> 필살기 · <b>U</b> 강화(테스트) · <b>P</b> 일시정지 · <b>M</b> 음악</p>
+  <div class="app">
+    <canvas id="game" width="450" height="800"></canvas>
+    <p class="tip" data-i18n="game.tip" data-i18n-html><b>드래그 · ← → · A D</b> 좌우 이동 · 미사일은 <b>자동 발사</b> · <b>Space</b> 필살기 · <b>U</b> 강화(테스트) · <b>P</b> 일시정지 · <b>M</b> 음악</p>
+    <aside class="records">
+      <h2>🏆 비행 기록</h2>
+      <div class="score-list" id="scoreList"></div>
+      <input id="nameInput" maxlength="8" placeholder="이름 입력">
+      <button id="saveScore">기록 저장</button>
+    </aside>
+  </div>
   <script src="../i18n-data.js"></script>
   <script src="../i18n.js"></script>
 
@@ -242,6 +258,35 @@ try {
   const raw = localStorage.getItem(BEST_KEY);
   if (raw) Game.best = JSON.parse(raw);
 } catch (e) { /* 로컬스토리지를 못 쓰는 환경이면 기본값 */ }
+
+/* ── 기록판 (이름 저장) ───────────────────────────────────────────────── */
+const SCORES_KEY = "petflight_scores_v1";
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem(SCORES_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+function drawScoreList() {
+  const el = document.getElementById("scoreList");
+  if (!el) return;
+  const list = loadScores();
+  el.innerHTML = list.length
+    ? list.map((s, i) => "<p>" + (i + 1) + ". " + s.n + " <b>" + s.s + "</b></p>").join("")
+    : "<p>아직 기록이 없어요</p>";
+}
+function saveScore() {
+  const nameEl = document.getElementById("nameInput");
+  const name = (nameEl && nameEl.value.trim()) || "익명";
+  const list = loadScores();
+  list.push({ n: name, s: Game.score });
+  list.sort((a, b) => b.s - a.s);
+  localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, 5)));
+  drawScoreList();
+}
+document.addEventListener("DOMContentLoaded", () => {
+  drawScoreList();
+  const btn = document.getElementById("saveScore");
+  if (btn) btn.addEventListener("click", saveScore);
+});
 
 /* ── 입력: 드래그 / 키보드 ───────────────────────────────────────────────
  * 좌우 이동은 방향키와 A·D를 같은 자격으로 받는다. 이 목록에 있는 키를

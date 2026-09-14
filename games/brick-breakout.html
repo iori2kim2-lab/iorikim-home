@@ -27,12 +27,28 @@
   }
   .tip { margin: 0; font-size: 13px; color: #8c6f9a; letter-spacing: .02em; }
   .tip b { color: #e5679a; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; }
+  .records { position: absolute; left: calc(100% + 20px); top: 50%; transform: translateY(-50%); width: 190px; text-align: left; background: #ffffff; color: #7a5c86; border-radius: 18px; padding: 16px; box-shadow: 0 14px 35px rgba(150,110,170,.28); }
+  .records h2 { margin: 0 0 10px; font-size: 1.05rem; color: #ff6f9c; }
+  .records .score-list { min-height: 90px; }
+  .records .score-list p { margin: 5px 0; border-bottom: 1px solid #f0e2ee; padding-bottom: 4px; font-size: .82rem; }
+  .records input { width: 100%; border: 1px solid #e6cfe2; border-radius: 8px; padding: 7px; margin: 8px 0; font: inherit; box-sizing: border-box; color: #7a5c86; }
+  .records button { width: 100%; border: 0; border-radius: 8px; background: #ff9ec4; color: #4a2436; font-weight: 700; padding: 8px; cursor: pointer; font: inherit; }
+  @media (max-width: 900px) { .records { position: static; transform: none; width: min(94vw, 420px); margin-top: 0; } }
 </style>
 </head>
 <body>
   <a href="../index.html" data-i18n="common.backHome" style="position:fixed;top:12px;left:12px;z-index:9999;background:rgba(122,92,134,.55);color:#fff;font:700 13px/1 'Apple SD Gothic Neo','Malgun Gothic',sans-serif;padding:9px 14px;border-radius:999px;text-decoration:none;backdrop-filter:blur(6px);">← 홈으로</a>
-  <canvas id="game" width="450" height="800"></canvas>
-  <p class="tip"><b>드래그 · ← → · A D</b> 이동 · <b>탭 / Space</b> 발사 · <b>Shift</b> 총알 · <b>Ctrl</b> 폭탄 · <b>Z</b> 자석 · <b>P</b> 일시정지 · <b>M</b> 음악 · <b>R</b> 재시작</p>
+  <div class="app">
+    <canvas id="game" width="450" height="800"></canvas>
+    <p class="tip"><b>드래그 · ← → · A D</b> 이동 · <b>탭 / Space</b> 발사 · <b>Shift</b> 총알 · <b>Ctrl</b> 폭탄 · <b>Z</b> 자석 · <b>P</b> 일시정지 · <b>M</b> 음악 · <b>R</b> 재시작</p>
+    <aside class="records">
+      <h2>🏆 점수 기록</h2>
+      <div class="score-list" id="scoreList"></div>
+      <input id="nameInput" maxlength="8" placeholder="이름 입력">
+      <button id="saveScore">기록 저장</button>
+    </aside>
+  </div>
 
 <script>
 "use strict";
@@ -137,6 +153,35 @@ const Game = {
   sockets: [], bomb: null, blast: null,
   magnetT: 0
 };
+
+/* ── 기록판 (이름 저장) ───────────────────────────────────────────────── */
+const SCORES_KEY = "brickbreakout_scores_v1";
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem(SCORES_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+function drawScoreList() {
+  const el = document.getElementById("scoreList");
+  if (!el) return;
+  const list = loadScores();
+  el.innerHTML = list.length
+    ? list.map((s, i) => "<p>" + (i + 1) + ". " + s.n + " <b>" + s.s + "</b></p>").join("")
+    : "<p>아직 기록이 없어요</p>";
+}
+function saveScore() {
+  const nameEl = document.getElementById("nameInput");
+  const name = (nameEl && nameEl.value.trim()) || "익명";
+  const list = loadScores();
+  list.push({ n: name, s: Game.score });
+  list.sort((a, b) => b.s - a.s);
+  localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, 5)));
+  drawScoreList();
+}
+document.addEventListener("DOMContentLoaded", () => {
+  drawScoreList();
+  const btn = document.getElementById("saveScore");
+  if (btn) btn.addEventListener("click", saveScore);
+});
 
 /* ── 유틸 ──────────────────────────────────────────────────────────────── */
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
