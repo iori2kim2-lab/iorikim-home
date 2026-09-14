@@ -49,5 +49,22 @@
     "icon": "🐦",
     "file": "sky-meadow.html",
     "preview": "../previews/sky-meadow.svg"
+  },
+  {
+    "title": {
+      "ko": "미드나잇 포켓",
+      "en": "Midnight Pocket",
+      "ja": "ミッドナイトポケット",
+      "zh": "午夜台球"
+    },
+    "description": {
+      "ko": "혼자 즐기는 포켓볼. 흰 공을 드래그해서 당긴 뒤 놓으면 샷이 나가요. 1~8번 공을 모두 넣어보세요.",
+      "en": "A solo pool table — drag the cue ball back and release to shoot. Sink balls 1 through 8.",
+      "ja": "ひとりで楽しむポケットビリヤード。白球をドラッグして離すとショット。1〜8番を全部沈めよう。",
+      "zh": "单人桌球游戏，拖拽白球后松开即可击球，把1到8号球全部打进袋。"
+    },
+    "icon": "🎱",
+    "file": "pocket-lounge.html",
+    "preview": "../previews/pocket-lounge.svg"
   }
 ]
