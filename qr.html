@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QR 코드 생성기 — iorikim</title>
+<meta name="description" content="텍스트, URL, 와이파이 정보를 QR 코드로 바로 만들어보세요. 브라우저 안에서 바로 처리됩니다." />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%236d5bff%22/><text x=%2250%22 y=%2266%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22800%22>io</text></svg>" />
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "3cc28db5dffd4206983e938497275c25"}'></script><!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-nav">
+    <a href="index.html" class="brand">
+      <span class="brand-badge">io</span>
+      iorikim
+    </a>
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="light" data-i18n="common.themeLight">☀️ 일반</button>
+      <button data-theme="dark" data-i18n="common.themeDark">🌙 다크</button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap tool-page">
+  <div class="tool-page-header">
+    <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
+    <h1><span class="tool-emoji">🔳</span> <span data-i18n="qr.title">QR 코드 생성기</span></h1>
+    <p data-i18n="qr.pageDesc">텍스트, URL, 와이파이 정보를 QR 코드로 바로 만들어드려요. 아무것도 서버로 전송되지 않고 브라우저 안에서만 처리됩니다.</p>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <div class="mode-tabs" id="qrModeTabs">
+        <button data-mode="text" class="active" data-i18n="qr.modeText">텍스트 / URL</button>
+        <button data-mode="wifi" data-i18n="qr.modeWifi">와이파이</button>
+      </div>
+    </div>
+
+    <!-- Text / URL -->
+    <div id="textSection">
+      <div class="field">
+        <label data-i18n="qr.textLabel">텍스트 또는 URL</label>
+        <textarea id="qrTextInput" class="textarea-input" rows="4" data-i18n-attr="placeholder:qr.textPlaceholder" placeholder="https://example.com 또는 원하는 텍스트를 입력하세요"></textarea>
+      </div>
+    </div>
+
+    <!-- WiFi -->
+    <div id="wifiSection" style="display:none;">
+      <div class="field">
+        <label data-i18n="qr.wifiSsidLabel">네트워크 이름 (SSID)</label>
+        <input type="text" id="wifiSsid" data-i18n-attr="placeholder:qr.wifiSsidPlaceholder" placeholder="예: MyHomeWifi" />
+      </div>
+      <div class="field">
+        <label data-i18n="qr.wifiPasswordLabel">비밀번호</label>
+        <input type="text" id="wifiPassword" data-i18n-attr="placeholder:qr.wifiPasswordPlaceholder" placeholder="비밀번호 (오픈 네트워크면 비워두세요)" />
+      </div>
+      <div class="field">
+        <label data-i18n="qr.wifiSecurityLabel">보안 방식</label>
+        <select id="wifiSecurity">
+          <option value="WPA" selected>WPA / WPA2</option>
+          <option value="WEP">WEP</option>
+          <option value="nopass" data-i18n="qr.wifiSecurityNone">보안 없음 (오픈)</option>
+        </select>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="wifiHidden" />
+        <label for="wifiHidden" data-i18n="qr.wifiHiddenLabel">숨겨진 네트워크예요</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label data-i18n="qr.sizeLabel">이미지 크기</label>
+      <select id="qrSize">
+        <option value="300">300 × 300px</option>
+        <option value="600" selected>600 × 600px</option>
+        <option value="1000">1000 × 1000px</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label data-i18n="qr.levelLabel">오류 복원 수준</label>
+      <select id="qrLevel">
+        <option value="L" data-i18n="qr.levelL">낮음 (7%) · 더 촘촘하게</option>
+        <option value="M" selected data-i18n="qr.levelM">보통 (15%) · 권장</option>
+        <option value="Q" data-i18n="qr.levelQ">높음 (25%)</option>
+        <option value="H" data-i18n="qr.levelH">최고 (30%) · 인쇄물에 좋아요</option>
+      </select>
+    </div>
+
+    <div class="result visible">
+      <div class="qr-preview-wrap">
+        <div id="qrPreview" class="qr-preview"></div>
+      </div>
+      <p class="hint" id="qrEmptyHint" data-i18n="qr.emptyHint" style="text-align:center;margin:0;">내용을 입력하면 QR 코드가 바로 만들어져요.</p>
+      <div class="qr-download-row" id="qrDownloadRow" hidden>
+        <a class="primary-btn download-btn" id="qrPngBtn" download data-i18n="qr.downloadPng">PNG 다운로드</a>
+        <a class="secondary-btn download-btn" id="qrSvgBtn" download data-i18n="qr.downloadSvg">SVG 다운로드</a>
+      </div>
+      <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap" data-i18n="common.footer">© 2026 iorikim. 모든 도구는 브라우저에서 무료로 이용할 수 있어요.</div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="i18n-data.js"></script>
+<script src="i18n.js"></script>
+<script src="theme.js"></script>
+<script src="qr.js"></script>
+</body>
+</html>

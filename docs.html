@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>문서 변환기 — iorikim</title>
-<meta name="description" content="Word 문서를 PDF로, Excel과 CSV를 서로, 텍스트를 PDF로 바꿔보세요. 브라우저 안에서 바로 처리됩니다." />
+<meta name="description" content="Word 문서를 PDF로, Excel을 CSV·PDF로, 텍스트/마크다운을 PDF로 바꿔보세요. 브라우저 안에서 바로 처리됩니다." />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
 <link rel="stylesheet" href="styles.css" />
@@ -30,7 +30,7 @@
   <div class="tool-page-header">
     <a href="index.html" class="back-link" data-i18n="common.backHome">← 홈으로</a>
     <h1><span class="tool-emoji">📃</span> <span data-i18n="docs.title">문서 변환기</span></h1>
-    <p data-i18n="docs.pageDesc">Word 문서를 PDF로, Excel과 CSV를 서로, 텍스트를 PDF로 바꿔드려요. 파일은 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
+    <p data-i18n="docs.pageDesc">Word 문서를 PDF로, Excel을 CSV·PDF로, 텍스트/마크다운을 PDF로 바꿔드려요. 파일은 업로드되지 않고 브라우저 안에서만 처리됩니다.</p>
   </div>
 
   <div class="panel">
@@ -38,7 +38,7 @@
       <div class="mode-tabs" id="docsModeTabs">
         <button data-mode="word" class="active" data-i18n="docs.modeWordToPdf">Word → PDF</button>
         <button data-mode="excel" data-i18n="docs.modeExcelCsv">Excel ↔ CSV</button>
-        <button data-mode="text" data-i18n="docs.modeTextToPdf">텍스트 → PDF</button>
+        <button data-mode="text" data-i18n="docs.modeTextToPdf">텍스트/마크다운 → PDF</button>
       </div>
     </div>
 
@@ -78,6 +78,7 @@
           <p class="hint" id="excelFileInfo" style="text-align:left;margin:0;"></p>
         </div>
         <button class="primary-btn" id="excelConvertBtn" data-i18n="docs.excelConvertBtn">변환하기</button>
+        <button class="secondary-btn" id="excelPdfBtn" data-i18n="docs.excelPdfBtn">PDF로 내보내기</button>
         <p class="hint" data-i18n="docs.excelSheetHint">여러 시트가 있으면 첫 번째 시트만 변환돼요.</p>
       </div>
 
@@ -91,8 +92,9 @@
     <!-- Text -> PDF -->
     <div id="textSection" style="display:none;">
       <div class="field">
-        <label data-i18n="docs.textareaLabel">텍스트 (또는 .txt, .md 파일 불러오기)</label>
-        <textarea id="textInput" class="textarea-input" rows="10" data-i18n-attr="placeholder:docs.textareaPlaceholder" placeholder="여기에 텍스트를 붙여넣으세요…"></textarea>
+        <label data-i18n="docs.textareaLabel">텍스트 또는 마크다운 (또는 .txt, .md 파일 불러오기)</label>
+        <textarea id="textInput" class="textarea-input" rows="10" data-i18n-attr="placeholder:docs.textareaPlaceholder" placeholder="여기에 텍스트나 마크다운을 붙여넣으세요…"></textarea>
+        <p class="hint" data-i18n="docs.mdFormatHint">마크다운 문법(#, **, -, 링크 등)을 쓰면 서식이 그대로 PDF에 반영돼요.</p>
       </div>
       <div class="field">
         <button class="secondary-btn" id="textFileBtn" data-i18n="docs.loadTextFileBtn">📄 텍스트 파일 불러오기</button>
@@ -120,6 +122,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="i18n-data.js"></script>
 <script src="i18n.js"></script>
 <script src="theme.js"></script>

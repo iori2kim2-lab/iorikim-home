@@ -203,6 +203,7 @@
     var controls = document.getElementById("excelControls");
     var fileInfo = document.getElementById("excelFileInfo");
     var convertBtn = document.getElementById("excelConvertBtn");
+    var pdfBtn = document.getElementById("excelPdfBtn");
     var result = document.getElementById("excelResult");
     var summary = document.getElementById("excelSummary");
     var downloadBtn = document.getElementById("excelDownloadBtn");
@@ -302,6 +303,49 @@
       }
     });
 
+    // Reads the current file into a workbook regardless of source format
+    // (csv text vs. xlsx/xls binary) and returns its first sheet.
+    async function readFirstSheet() {
+      var name = (currentFile.name || "").toLowerCase();
+      var wb;
+      if (name.endsWith(".csv")) {
+        wb = XLSX.read(await currentFile.text(), { type: "string" });
+      } else {
+        wb = XLSX.read(await currentFile.arrayBuffer(), { type: "array" });
+      }
+      return wb.Sheets[wb.SheetNames[0]];
+    }
+
+    pdfBtn.addEventListener("click", async function () {
+      if (!currentFile) return;
+      pdfBtn.disabled = true;
+      pdfBtn.textContent = t("docs.generatingPdf");
+
+      try {
+        var sheet = await readFirstSheet();
+        var tableHtml =
+          "<style>table{border-collapse:collapse;width:100%;font-size:12px}" +
+          "td,th{border:1px solid #ccc;padding:5px 9px;text-align:left}</style>" +
+          XLSX.utils.sheet_to_html(sheet, { editable: false });
+
+        var blob = await htmlToPdfBlob(tableHtml);
+        var url = URL.createObjectURL(blob);
+        var baseName = (currentFile.name || "sheet").replace(/\.[^.]+$/, "");
+        downloadBtn.href = url;
+        downloadBtn.download = baseName + ".pdf";
+        downloadBtn.hidden = false;
+        summary.textContent = t("docs.excelSummary", { name: baseName + ".pdf", size: formatBytes(blob.size) });
+        result.classList.add("visible");
+        result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (err) {
+        console.error(err);
+        alert(t("docs.excelPdfFailAlert"));
+      } finally {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = t("docs.excelPdfBtn");
+      }
+    });
+
     handlers.excel = handleFile;
   })();
 
@@ -331,6 +375,29 @@
       }
     });
 
+    // Plain text has no blank-line paragraphs, so `breaks:true` makes every
+    // single newline a visible line break — matching the old pre-wrap look
+    // for non-markdown input while still parsing real markdown syntax.
+    if (window.marked) marked.setOptions({ breaks: true, gfm: true });
+
+    var MD_CSS =
+      "<style>.md-body h1,.md-body h2,.md-body h3{margin:.6em 0 .3em;line-height:1.3}" +
+      ".md-body h1{font-size:1.6em}.md-body h2{font-size:1.35em}.md-body h3{font-size:1.15em}" +
+      ".md-body p{margin:.5em 0}.md-body ul,.md-body ol{margin:.4em 0;padding-left:1.4em}" +
+      ".md-body li{margin:.2em 0}.md-body blockquote{margin:.6em 0;padding:.2em 1em;border-left:3px solid #ddd;color:#555}" +
+      ".md-body code{background:#f2f2f2;padding:.1em .35em;border-radius:4px;font-size:.92em}" +
+      ".md-body pre{background:#f2f2f2;padding:10px 12px;border-radius:6px;overflow:auto}" +
+      ".md-body pre code{background:none;padding:0}" +
+      ".md-body a{color:#6d5bff}.md-body hr{border:none;border-top:1px solid #ddd;margin:1em 0}" +
+      ".md-body table{border-collapse:collapse;margin:.5em 0}.md-body td,.md-body th{border:1px solid #ccc;padding:4px 8px}</style>";
+
+    function renderMarkdown(text) {
+      var body = window.marked
+        ? marked.parse(text)
+        : "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;\">" + escapeHtml(text) + "</pre>";
+      return MD_CSS + '<div class="md-body">' + body + "</div>";
+    }
+
     convertBtn.addEventListener("click", async function () {
       var text = textInput.value;
       if (!text.trim()) return;
@@ -338,7 +405,7 @@
       convertBtn.textContent = t("docs.generatingPdf");
 
       try {
-        var html = "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;\">" + escapeHtml(text) + "</pre>";
+        var html = renderMarkdown(text);
         var blob = await htmlToPdfBlob(html);
         var url = URL.createObjectURL(blob);
         downloadBtn.href = url;
