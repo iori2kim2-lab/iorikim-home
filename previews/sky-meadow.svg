@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="skym" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bdeeff"/>
+      <stop offset="1" stop-color="#7fd4fb"/>
+    </linearGradient>
+    <linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4da95d"/>
+      <stop offset="0.45" stop-color="#9de079"/>
+      <stop offset="1" stop-color="#4da95d"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" fill="url(#skym)"/>
+
+  <g fill="#ffffff" fill-opacity="0.85">
+    <ellipse cx="80" cy="55" rx="38" ry="16"/>
+    <ellipse cx="108" cy="45" rx="26" ry="14"/>
+    <ellipse cx="410" cy="200" rx="40" ry="16"/>
+    <ellipse cx="438" cy="190" rx="24" ry="12"/>
+  </g>
+
+  <g>
+    <rect x="150" y="0" width="52" height="90" rx="0 0 12 12" fill="url(#pipe)" stroke="#2e8149" stroke-width="4"/>
+    <rect x="150" y="170" width="52" height="110" fill="url(#pipe)" stroke="#2e8149" stroke-width="4"/>
+    <rect x="330" y="0" width="52" height="150" fill="url(#pipe)" stroke="#2e8149" stroke-width="4"/>
+    <rect x="330" y="210" width="52" height="70" fill="url(#pipe)" stroke="#2e8149" stroke-width="4"/>
+  </g>
+
+  <g transform="translate(255,130) rotate(-12)">
+    <ellipse cx="0" cy="5" rx="30" ry="23" fill="#e68831"/>
+    <path d="M-13 6 L-30 -3 L-13 -12 Z" fill="#f57e4a"/>
+    <circle cx="8" cy="-6" r="24" fill="#ffc54e" stroke="#d87c2d" stroke-width="3"/>
+    <circle cx="17" cy="-9" r="3.2" fill="#202c43"/>
+    <path d="M22 2 L38 -2 L22 -6 Z" fill="#f0a63c"/>
+  </g>
+</svg>

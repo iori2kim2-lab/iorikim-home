@@ -32,5 +32,22 @@
     "icon": "🐰",
     "file": "gomoku.html",
     "preview": "../previews/gomoku.svg"
+  },
+  {
+    "title": {
+      "ko": "스카이 메도우",
+      "en": "Sky Meadow",
+      "ja": "スカイメドウ",
+      "zh": "天空草原"
+    },
+    "description": {
+      "ko": "클릭이나 스페이스바로 새를 날려서 파이프 사이를 통과하는 플래피버드 스타일 게임이에요.",
+      "en": "A Flappy Bird-style game — click or press Space to flap and thread the gaps between pipes.",
+      "ja": "クリックまたはスペースキーで鳥を羽ばたかせ、パイプの間を通り抜けるフラッピーバード風ゲーム。",
+      "zh": "点击或按空格键让小鸟飞行，穿过管道间隙的类似Flappy Bird的游戏。"
+    },
+    "icon": "🐦",
+    "file": "sky-meadow.html",
+    "preview": "../previews/sky-meadow.svg"
   }
 ]
