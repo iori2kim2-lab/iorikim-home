@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="cmpbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe3d0"/>
+      <stop offset="1" stop-color="#ffd0b0"/>
+    </linearGradient>
+    <linearGradient id="cmpphoto" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fd3ff"/>
+      <stop offset="0.55" stop-color="#a7e8c0"/>
+      <stop offset="1" stop-color="#ffd166"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" fill="url(#cmpbg)"/>
+
+  <!-- large photo card (before) -->
+  <g transform="translate(60,54)">
+    <rect width="160" height="160" rx="14" fill="#ffffff" stroke="#e8c2a0" stroke-width="3"/>
+    <rect x="10" y="10" width="140" height="140" rx="8" fill="url(#cmpphoto)"/>
+    <circle cx="60" cy="60" r="18" fill="#fff8" />
+    <path d="M20 130 L60 90 L90 115 L120 80 L150 130 Z" fill="#ffffff55"/>
+    <text x="80" y="182" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="15" fill="#8a5a2c">4.8 MB</text>
+  </g>
+
+  <!-- compression arrow -->
+  <g stroke="#e2833a" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M232 130 L268 130"/>
+    <path d="M258 118 L272 130 L258 142"/>
+  </g>
+  <g fill="#e2833a">
+    <circle cx="250" cy="105" r="4" opacity="0.7"/>
+    <circle cx="250" cy="155" r="4" opacity="0.7"/>
+  </g>
+
+  <!-- small photo card (after) -->
+  <g transform="translate(300,84)">
+    <rect width="100" height="100" rx="12" fill="#ffffff" stroke="#e8c2a0" stroke-width="3"/>
+    <rect x="7" y="7" width="86" height="86" rx="6" fill="url(#cmpphoto)"/>
+    <circle cx="38" cy="38" r="11" fill="#fff8" />
+    <path d="M13 82 L38 56 L57 72 L76 50 L93 82 Z" fill="#ffffff55"/>
+    <text x="50" y="122" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="15" fill="#8a5a2c">720 KB</text>
+  </g>
+
+  <g fill="#2f8f5b">
+    <rect x="304" y="60" width="92" height="22" rx="11"/>
+  </g>
+  <text x="350" y="75" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="12" fill="#ffffff">85% 감소</text>
+</svg>
