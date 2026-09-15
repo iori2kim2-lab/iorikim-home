@@ -392,9 +392,15 @@
       ".md-body table{border-collapse:collapse;margin:.5em 0}.md-body td,.md-body th{border:1px solid #ccc;padding:4px 8px}</style>";
 
     function renderMarkdown(text) {
-      var body = window.marked
-        ? marked.parse(text)
-        : "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;\">" + escapeHtml(text) + "</pre>";
+      var body;
+      // marked() passes raw HTML found in the source straight through, so any
+      // pasted <script>/onerror=.../etc. would otherwise run right here — only
+      // render as markdown when DOMPurify is present to sanitize the result.
+      if (window.marked && window.DOMPurify) {
+        body = DOMPurify.sanitize(marked.parse(text));
+      } else {
+        body = "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;\">" + escapeHtml(text) + "</pre>";
+      }
       return MD_CSS + '<div class="md-body">' + body + "</div>";
     }
 

@@ -265,12 +265,17 @@ function loadScores() {
   try { return JSON.parse(localStorage.getItem(SCORES_KEY) || "[]"); }
   catch (e) { return []; }
 }
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : String(str);
+  return div.innerHTML;
+}
 function drawScoreList() {
   const el = document.getElementById("scoreList");
   if (!el) return;
   const list = loadScores();
   el.innerHTML = list.length
-    ? list.map((s, i) => "<p>" + (i + 1) + ". " + s.n + " <b>" + s.s + "</b></p>").join("")
+    ? list.map((s, i) => "<p>" + (i + 1) + ". " + escapeHtml(s.n) + " <b>" + s.s + "</b></p>").join("")
     : "<p>아직 기록이 없어요</p>";
 }
 function saveScore() {

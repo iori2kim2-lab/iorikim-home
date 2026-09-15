@@ -34,7 +34,8 @@
   let best=+localStorage.midnightPocketBest||0; bestEl.textContent=best;
   const SCORES_KEY='midnightPocketScores';
   function loadScores(){try{return JSON.parse(localStorage.getItem(SCORES_KEY)||'[]')}catch(e){return[]}}
-  function drawScoreList(){const list=loadScores(),el=document.querySelector('#scoreList');el.innerHTML=list.length?list.map((s,i)=>'<p>'+(i+1)+'. '+s.n+' <b>'+s.s+'</b></p>').join(''):'<p>아직 기록이 없어요</p>'}
+  function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+  function drawScoreList(){const list=loadScores(),el=document.querySelector('#scoreList');el.innerHTML=list.length?list.map((s,i)=>'<p>'+(i+1)+'. '+esc(s.n)+' <b>'+s.s+'</b></p>').join(''):'<p>아직 기록이 없어요</p>'}
   function saveScore(){const name=(document.querySelector('#nameInput').value||'').trim()||'익명';const list=loadScores();list.push({n:name,s:score});list.sort((a,b)=>b.s-a.s);localStorage.setItem(SCORES_KEY,JSON.stringify(list.slice(0,5)));drawScoreList()}
   document.querySelector('#saveScore').onclick=saveScore; drawScoreList();
   const ping=(f=360,d=.07,v=.055)=>{try{let ac=new(window.AudioContext||window.webkitAudioContext)(),o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(ac.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.stop(ac.currentTime+d)}catch(e){}};
