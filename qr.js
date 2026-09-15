@@ -1,4 +1,11 @@
 (function () {
+  // qrcode-generator's default byte mode truncates each char code to a
+  // single byte (charCodeAt & 0xff), which silently mangles any non-ASCII
+  // text (Korean, Japanese, emoji, ...). Switch it to proper UTF-8 bytes.
+  if (window.qrcode && qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs["UTF-8"]) {
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+  }
+
   var modeTabs = document.getElementById("qrModeTabs");
   var sections = {
     text: document.getElementById("textSection"),
