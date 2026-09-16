@@ -264,15 +264,18 @@
   var img2pdfSection = document.getElementById("img2pdfSection");
   var pdf2imgSection = document.getElementById("pdf2imgSection");
 
-  pdfModeTabs.addEventListener("click", function (e) {
-    var btn = e.target.closest("button");
-    if (!btn) return;
-    var mode = btn.dataset.mode;
+  function switchPdfMode(mode) {
     pdfModeTabs.querySelectorAll("button").forEach(function (b) {
-      b.classList.toggle("active", b === btn);
+      b.classList.toggle("active", b.dataset.mode === mode);
     });
     img2pdfSection.style.display = mode === "img2pdf" ? "" : "none";
     pdf2imgSection.style.display = mode === "pdf2img" ? "" : "none";
+  }
+
+  pdfModeTabs.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    switchPdfMode(btn.dataset.mode);
   });
 
   // ---- PDF → images ----
@@ -537,4 +540,19 @@
       pdf2wordBtn.textContent = t("pdf.pdf2wordBtn");
     }
   });
+
+  // pick up a PDF handed off from another tool (e.g. the docs converter's
+  // Word tab, when someone drops a .pdf there by mistake), if one is waiting
+  if (window.IorikimHandoff) {
+    IorikimHandoff.load()
+      .then(function (data) {
+        if (!data || !data.blob) return;
+        switchPdfMode("pdf2img");
+        var file = new File([data.blob], data.name || "document.pdf", { type: "application/pdf" });
+        handlePdfFile(file);
+      })
+      .catch(function (err) {
+        console.error(err);
+      });
+  }
 })();

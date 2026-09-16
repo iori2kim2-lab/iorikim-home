@@ -148,6 +148,21 @@
           handlers.excel(file);
           return;
         }
+        // PDFs aren't handled on this page at all — hand the file off to the
+        // PDF tool (which can turn it into a Word doc) instead of a dead end.
+        if (name.endsWith(".pdf") && window.IorikimHandoff) {
+          fileInfo.textContent = t("common.loading");
+          controls.style.display = "grid";
+          IorikimHandoff.save(file, file.name)
+            .then(function () {
+              location.href = "pdf.html?from=docs";
+            })
+            .catch(function (err) {
+              console.error(err);
+              location.href = "pdf.html";
+            });
+          return;
+        }
         alert(t("docs.wordOnlyAlert"));
         return;
       }
