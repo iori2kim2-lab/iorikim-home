@@ -291,6 +291,11 @@
   var pdf2imgGrid = document.getElementById("pdf2imgGrid");
   var pdf2imgZipBtn = document.getElementById("pdf2imgZipBtn");
 
+  var pdf2wordBtn = document.getElementById("pdf2wordBtn");
+  var pdf2wordResult = document.getElementById("pdf2wordResult");
+  var pdf2wordSummary = document.getElementById("pdf2wordSummary");
+  var pdf2wordDownloadBtn = document.getElementById("pdf2wordDownloadBtn");
+
   var pdfDoc = null;
   var pdfFileName = "document";
 
@@ -350,6 +355,7 @@
     pdfFileName = (file.name || "document").replace(/\.[^.]+$/, "");
     pdfDropzoneTitle.textContent = t("common.loading");
     pdf2imgResult.classList.remove("visible");
+    pdf2wordResult.classList.remove("visible");
 
     try {
       var pdfjsLib = await loadPdfjs();
@@ -376,6 +382,22 @@
     pdf2imgQualityValue.textContent = pdf2imgQualityRange.value;
   });
 
+  // Renders one PDF page to a canvas at the given scale, filling a white
+  // background first when exporting as JPEG (which has no transparency).
+  async function renderPageToCanvas(page, scale, mime) {
+    var viewport = page.getViewport({ scale: scale });
+    var canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    var ctx = canvas.getContext("2d");
+    if (mime === "image/jpeg") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    return canvas;
+  }
+
   pdf2imgBtn.addEventListener("click", async function () {
     if (!pdfDoc) return;
     pdf2imgBtn.disabled = true;
@@ -394,16 +416,7 @@
 
       for (var i = 1; i <= pdfDoc.numPages; i++) {
         var page = await pdfDoc.getPage(i);
-        var viewport = page.getViewport({ scale: scale });
-        var canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        var ctx = canvas.getContext("2d");
-        if (mime === "image/jpeg") {
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        var canvas = await renderPageToCanvas(page, scale, mime);
 
         var blob = await new Promise(function (resolve) {
           canvas.toBlob(resolve, mime, quality);
@@ -446,6 +459,7 @@
         size: formatBytes(zipBlob.size),
       });
 
+      pdf2wordResult.classList.remove("visible");
       pdf2imgResult.classList.add("visible");
       pdf2imgResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (err) {
@@ -454,6 +468,73 @@
     } finally {
       pdf2imgBtn.disabled = false;
       pdf2imgBtn.textContent = t("pdf.pdf2imgBtn");
+    }
+  });
+
+  // Word doesn't lay out pages at 96 CSS px/in like a browser does, but this
+  // is the same reference DPI the docx library assumes for image sizing, so
+  // treating "px" that way keeps the page reliably inside the printable area.
+  var WORD_PAGE_PX = 620;
+
+  pdf2wordBtn.addEventListener("click", async function () {
+    if (!pdfDoc) return;
+    pdf2wordBtn.disabled = true;
+    pdf2wordBtn.textContent = t("pdf.convertingToWord");
+
+    try {
+      var scale = Number(pdf2imgScaleSelect.value) || 2;
+      var mime = pdf2imgFormatSelect.value;
+      var quality = Number(pdf2imgQualityRange.value) / 100;
+      var imgType = mime === "image/png" ? "png" : "jpg";
+
+      var children = [];
+
+      for (var i = 1; i <= pdfDoc.numPages; i++) {
+        var page = await pdfDoc.getPage(i);
+        var canvas = await renderPageToCanvas(page, scale, mime);
+
+        var blob = await new Promise(function (resolve) {
+          canvas.toBlob(resolve, mime, quality);
+        });
+        if (!blob) continue;
+
+        var dispW = WORD_PAGE_PX;
+        var dispH = Math.round(canvas.height * (dispW / canvas.width));
+
+        children.push(
+          new docx.Paragraph({
+            pageBreakBefore: i > 1,
+            children: [
+              new docx.ImageRun({
+                data: await blob.arrayBuffer(),
+                type: imgType,
+                transformation: { width: dispW, height: dispH },
+              }),
+            ],
+          })
+        );
+      }
+
+      var doc = new docx.Document({ sections: [{ children: children }] });
+      var docxBlob = await docx.Packer.toBlob(doc);
+
+      var url = URL.createObjectURL(docxBlob);
+      pdf2wordDownloadBtn.href = url;
+      pdf2wordDownloadBtn.download = pdfFileName + ".docx";
+      pdf2wordSummary.textContent = t("pdf.wordSummary", {
+        count: pdfDoc.numPages,
+        size: formatBytes(docxBlob.size),
+      });
+
+      pdf2imgResult.classList.remove("visible");
+      pdf2wordResult.classList.add("visible");
+      pdf2wordResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (err) {
+      console.error(err);
+      alert(t("pdf.pdf2wordFailAlert"));
+    } finally {
+      pdf2wordBtn.disabled = false;
+      pdf2wordBtn.textContent = t("pdf.pdf2wordBtn");
     }
   });
 })();

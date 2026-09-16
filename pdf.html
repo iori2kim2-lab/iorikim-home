@@ -108,12 +108,20 @@
         </div>
 
         <button class="primary-btn" id="pdf2imgBtn" data-i18n="pdf.pdf2imgBtn">이미지로 변환하기</button>
+        <button class="secondary-btn" id="pdf2wordBtn" data-i18n="pdf.pdf2wordBtn">워드 문서로 만들기</button>
+        <p class="hint" data-i18n="pdf.pdf2wordHint">각 페이지를 사진처럼 그대로 찍어서 워드 문서에 한 장씩 넣어드려요. 눈에 보이는 사진과 글자가 원본 그대로 담기지만, 워드에서 글자만 따로 선택하거나 고칠 수는 없어요.</p>
       </div>
 
       <div class="result" id="pdf2imgResult">
         <p class="hint" id="pdf2imgSummary" style="text-align:left;margin:0 0 4px;"></p>
         <div class="icon-grid" id="pdf2imgGrid"></div>
         <a class="primary-btn download-btn" id="pdf2imgZipBtn" download data-i18n="pdf.downloadZipBtn">ZIP으로 전체 다운로드</a>
+        <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
+      </div>
+
+      <div class="result" id="pdf2wordResult">
+        <p class="hint" id="pdf2wordSummary" style="text-align:left;margin:0;"></p>
+        <a class="primary-btn download-btn" id="pdf2wordDownloadBtn" download data-i18n="pdf.downloadWordBtn">워드 문서 다운로드</a>
         <p class="hint" data-i18n="common.privacyHint">이미지는 서버로 전송되지 않습니다. 모든 처리는 이 브라우저 안에서 끝나요.</p>
       </div>
     </div>
@@ -127,6 +135,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="i18n-data.js"></script>
 <script src="i18n.js"></script>
 <script src="theme.js"></script>
