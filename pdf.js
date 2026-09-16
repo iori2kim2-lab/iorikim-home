@@ -26,6 +26,14 @@
     return type === "image/heic" || type === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
   }
 
+  function isImageFile(file) {
+    return file.type.startsWith("image/") || isHeic(file);
+  }
+
+  function isPdfFile(file) {
+    return file.type === "application/pdf" || (file.name || "").toLowerCase().endsWith(".pdf");
+  }
+
   function blobToDataUrl(blob) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
@@ -67,7 +75,15 @@
   });
 
   dropzone.addEventListener("drop", function (e) {
-    handleFiles(e.dataTransfer.files);
+    var files = Array.from(e.dataTransfer.files || []);
+    // A PDF dropped on the image dropzone almost certainly belongs on the
+    // other tab — send it there instead of silently doing nothing.
+    if (!files.some(isImageFile) && files.some(isPdfFile)) {
+      switchPdfMode("pdf2img");
+      handlePdfFile(files.filter(isPdfFile)[0]);
+      return;
+    }
+    handleFiles(files);
   });
 
   fileInput.addEventListener("change", function () {
@@ -76,9 +92,7 @@
   });
 
   async function handleFiles(fileListInput) {
-    var files = Array.from(fileListInput || []).filter(function (f) {
-      return f.type.startsWith("image/") || isHeic(f);
-    });
+    var files = Array.from(fileListInput || []).filter(isImageFile);
     if (!files.length) return;
 
     for (var i = 0; i < files.length; i++) {
@@ -336,8 +350,15 @@
   });
 
   pdfDropzone.addEventListener("drop", function (e) {
-    var file = e.dataTransfer.files[0];
-    if (file) handlePdfFile(file);
+    var files = Array.from(e.dataTransfer.files || []);
+    // Images dropped on the PDF dropzone almost certainly belong on the
+    // other tab — send them there instead of showing a "PDF only" alert.
+    if (!files.some(isPdfFile) && files.some(isImageFile)) {
+      switchPdfMode("img2pdf");
+      handleFiles(files.filter(isImageFile));
+      return;
+    }
+    if (files[0]) handlePdfFile(files[0]);
   });
 
   pdfFileInput.addEventListener("change", function () {
